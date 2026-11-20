@@ -1,0 +1,17 @@
+{
+  "audit": {
+    "dependsOn": "dependency",
+    "duplicates": "overlap"
+  },
+  "concepts": {
+    "narrower": "hierarchy",
+    "similarTo": "similarity"
+  },
+  "cases": {
+    "to_model": "unknown-element",
+    "candidate": "hypothesis",
+    "judgment": "judgment-record",
+    "holds true": "affirmation",
+    "holds false": "negation"
+  }
+}
