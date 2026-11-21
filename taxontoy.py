@@ -378,7 +378,7 @@ def _emit(text, output):
 def _table_path(args):
     if args.table is not None:
         return str(args.table)
-    env = os.environ.get("TAXONTOY_TABLE")
+    env = (os.environ.get("TAXONTOY_TABLE") or "").strip()
     if env:
         return env
     raise ValueError("pass the table path or set TAXONTOY_TABLE")
@@ -387,7 +387,7 @@ def _table_path(args):
 def _onto_path(args):
     if args.onto is not None:
         return str(args.onto)
-    env = os.environ.get("ONTO_CHECKOUT")
+    env = (os.environ.get("ONTO_CHECKOUT") or "").strip()
     if env:
         return env
     raise ValueError("pass --onto or set ONTO_CHECKOUT")
