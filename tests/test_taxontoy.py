@@ -167,10 +167,11 @@ class CoverageTests(unittest.TestCase):
     def setUp(self):
         if not ONTO:
             self.fail("set ONTO_CHECKOUT to the pinned ONTO checkout")
+        self.onto = str(Path(ONTO).resolve())
 
     def _cover(self, table, graphs, *extra):
         directory = Path(table).parent
-        args = ["coverage", str(table), "--onto", ONTO, "--format", "json", *extra]
+        args = ["coverage", str(table), "--onto", self.onto, "--format", "json", *extra]
         for wave, payload in graphs.items():
             path = write_json(directory, f"{wave}.json", payload)
             args.extend(["--graph", f"{wave}={path}"])
@@ -205,7 +206,7 @@ class CoverageTests(unittest.TestCase):
             candidates,
         )
         self.assertTrue(all(item["folded"] is False for item in candidates))
-        self.assertEqual(payload["onto"]["sha256"], hashlib.sha256((Path(ONTO) / "knowledgegraph.py").read_bytes()).hexdigest())
+        self.assertEqual(payload["onto"]["sha256"], hashlib.sha256((Path(self.onto) / "knowledgegraph.py").read_bytes()).hexdigest())
         again = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         self.assertEqual(result.stdout, again)
 
@@ -245,7 +246,7 @@ class CoverageTests(unittest.TestCase):
             tmp = Path(tmp)
             table = write_json(tmp, "table.json", minimal_table())
             graphs = fixture_graphs()
-            args = ["coverage", str(table), "--onto", ONTO, "--json"]
+            args = ["coverage", str(table), "--onto", self.onto, "--json"]
             for wave, payload in graphs.items():
                 path = write_json(tmp, f"{wave}.json", payload)
                 args.extend(["--graph", f"{wave}={path}"])
@@ -295,7 +296,7 @@ class CommittedReportTests(unittest.TestCase):
             candidates,
         )
         if ONTO:
-            digest = hashlib.sha256((Path(ONTO) / "knowledgegraph.py").read_bytes()).hexdigest()
+            digest = hashlib.sha256((Path(ONTO).resolve() / "knowledgegraph.py").read_bytes()).hexdigest()
             self.assertEqual(payload["onto"]["sha256"], digest)
 
 
