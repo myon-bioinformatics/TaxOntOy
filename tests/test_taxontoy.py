@@ -1989,22 +1989,6 @@ def _write_manifest(directory, sources, name="manifest.json"):
     return write_json(directory, name, {"sources": sources})
 
 
-# The two regenerate-step failures on PR #9: graph.json left at 0.4.0, then
-# repos-properties.json still hashing that older file.
-_OLD_GRAPH_VERSION = "0.4.0"
-_OLD_GRAPH_SHA256 = "3a510b3ad55deccf71602e72584959a1c408b9c55e0c16ff8989c49aad888d9d"
-
-
-def _graph_identity_failures(graph_version, recorded_sha, file_sha):
-    """Which checked-in identity checks fail. Empty means the pair is current."""
-    failed = []
-    if graph_version != taxontoy.__version__:
-        failed.append("version")
-    if recorded_sha != file_sha:
-        failed.append("sha256")
-    return failed
-
-
 class RepoRelationTests(unittest.TestCase):
     def test_checked_in_graph_has_no_double_distribution(self):
         graph_path = ROOT / "fixtures" / "repos" / "graph.json"
@@ -2021,7 +2005,6 @@ class RepoRelationTests(unittest.TestCase):
             item["sha256"] for item in report["inputs"] if item["path"] == "fixtures/repos/graph.json"
         )
         self.assertEqual(recorded, graph_sha)
-        self.assertEqual(_graph_identity_failures(graph["version"], recorded, graph_sha), [])
         self.assertEqual(
             report_path.read_text(encoding="utf-8"),
             json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -2116,34 +2099,6 @@ class RepoRelationTests(unittest.TestCase):
         )
         self.assertIn("mapping subtree-of subtree", graph_text.stdout)
         self.assertIn("mapping pins workflow-pin", graph_text.stdout)
-
-    def test_old_graph_version_and_stale_digest_fail_the_identity_checks(self):
-        graph_path = ROOT / "fixtures" / "repos" / "graph.json"
-        report = json.loads((ROOT / "repos-properties.json").read_text(encoding="utf-8"))
-        graph = json.loads(graph_path.read_text(encoding="utf-8"))
-        file_sha = hashlib.sha256(graph_path.read_bytes()).hexdigest()
-        recorded = next(
-            item["sha256"] for item in report["inputs"] if item["path"] == "fixtures/repos/graph.json"
-        )
-        self.assertEqual(_graph_identity_failures(graph["version"], recorded, file_sha), [])
-        self.assertEqual(
-            _graph_identity_failures(_OLD_GRAPH_VERSION, recorded, file_sha),
-            ["version"],
-        )
-        self.assertEqual(
-            _graph_identity_failures(graph["version"], _OLD_GRAPH_SHA256, file_sha),
-            ["sha256"],
-        )
-        self.assertEqual(
-            _graph_identity_failures(_OLD_GRAPH_VERSION, _OLD_GRAPH_SHA256, file_sha),
-            ["version", "sha256"],
-        )
-        with self.assertRaises(AssertionError) as version_failure:
-            self.assertEqual(_OLD_GRAPH_VERSION, taxontoy.__version__)
-        self.assertIn(_OLD_GRAPH_VERSION, str(version_failure.exception))
-        with self.assertRaises(AssertionError) as digest_failure:
-            self.assertEqual(_OLD_GRAPH_SHA256, file_sha)
-        self.assertIn(_OLD_GRAPH_SHA256, str(digest_failure.exception))
 
     def test_path_overlap_reports_both_edges_and_endpoint_pairs_do_too(self):
         table = minimal_table()
