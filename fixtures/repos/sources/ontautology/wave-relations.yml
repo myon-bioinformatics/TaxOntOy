@@ -1,0 +1,28 @@
+name: OTL relation profiles
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  examples:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: myon-bioinformatics/TaxOntOy
+          ref: 8621f2261d694af0de35e103ad2387872ca10b99 # main
+          path: too
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: myon-bioinformatics/TopOntoLogy
+          ref: d8880c9e55a0ce502dbf54a128bcaf471f0efc0e # main
+          path: tol
+          persist-credentials: false
+      - run: |
+          python3 -S examples/wave_relations.py too/otl-relations.json > report.json
+          python3 -S examples/check_wave_report.py report.json
+        env:
+          PYTHONPATH: tol:ontautology_shared/_onto

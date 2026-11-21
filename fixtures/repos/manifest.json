@@ -1,0 +1,95 @@
+{
+  "sources": [
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "file": "sources/aoi/aoi.py",
+      "path": "aoi.py",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "siblings"
+    },
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "file": "sources/aoi/blueprobe-vendor.lock.json",
+      "path": "blueprobe/vendor.lock.json",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "lock"
+    },
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "file": "sources/aoi/child-heads.json",
+      "path": "child-heads.json",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "heads"
+    },
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "file": "sources/aoi/dragowing-vendor.lock.json",
+      "path": "dragowing/vendor.lock.json",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "lock"
+    },
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "file": "sources/aoi/nagoyaction-vendor.lock.json",
+      "path": "nagoyaction/vendor.lock.json",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "lock"
+    },
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "file": "sources/aoi/pythdragoras-vendor.lock.json",
+      "path": "pythdragoras/vendor.lock.json",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "lock"
+    },
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "file": "sources/aoi/queryu-vendor.lock.json",
+      "path": "queryu/vendor.lock.json",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "lock"
+    },
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "file": "sources/aoi/sakanalytics-vendor.lock.json",
+      "path": "sakanalytics/vendor.lock.json",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "lock"
+    },
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "file": "sources/aoi/vendor.lock.json",
+      "path": "vendor.lock.json",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "lock"
+    },
+    {
+      "commit": "1909829db345870361ad5c6368bdf2adc199459c",
+      "file": "sources/ontautology/ci.yml",
+      "path": ".github/workflows/ci.yml",
+      "repo": "myon-bioinformatics/OnTautoLogy",
+      "role": "workflow"
+    },
+    {
+      "commit": "1909829db345870361ad5c6368bdf2adc199459c",
+      "file": "sources/ontautology/pages.yml",
+      "path": ".github/workflows/pages.yml",
+      "repo": "myon-bioinformatics/OnTautoLogy",
+      "role": "workflow"
+    },
+    {
+      "commit": "1909829db345870361ad5c6368bdf2adc199459c",
+      "file": "sources/ontautology/wave-relations.yml",
+      "path": ".github/workflows/wave-relations.yml",
+      "repo": "myon-bioinformatics/OnTautoLogy",
+      "role": "workflow"
+    },
+    {
+      "commit": "7c0823b4e9c7ec541d1a1f14c77ac85b72b83cb3",
+      "file": "sources/topontology/ci.yml",
+      "path": ".github/workflows/ci.yml",
+      "repo": "myon-bioinformatics/TopOntoLogy",
+      "role": "workflow"
+    }
+  ]
+}

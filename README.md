@@ -17,6 +17,29 @@
 
 `dependsOn` は依存する側から前提への `forward`、`duplicates` は `undirected`、`narrower` は上位から下位への `forward`、`similarTo` は `mutual` です。
 
+`repos` はリポジトリ同士の関係です。表に無くても `taxontoy-relations/2` のまま通ります。あるときは他のプロファイルと同じで、`direction` と `excluded.repos` が要ります。`audit` / `concepts` / `cases` の意味はそのままです。
+
+公開リポジトリの記録に合わせ、提案名は次の表の名前にしています。
+
+| 提案 | 表の名前 | 記録 |
+| --- | --- | --- |
+| `subtree-of` | `subtree` | Aoi の `child-heads.json` の `optional.subtree_prefix`。親リポジトリ `myon-bioinformatics/myon-bioinformatics` の `gh_ops.py` `subtree-push`（`1e6fce6cc2eda0717ef495c4355a6e19a3cf66ba`）。fleet の kind は `subtree` |
+| `vendors` | `vendor` | `vendor-lock/1` の `files`。fleet の kind は `vendor`。launcher と license は fleet では別 kind で、表では lock のファイル行をすべて `vendor` にします |
+| `pins` | `workflow-pin` | workflow の `uses: owner/repo@SHA` と、checkout の `repository` と `ref`。fleet の kind は `workflow-pin` |
+| `consumes` | `consumes` | `aoi.py` の `SIBLINGS`。子が別の subtree ディレクトリを import します。fleet の `shared-tools` は別の consumer 記録です |
+
+`source` はパスを持つリポジトリ、`target` は相手です。リポジトリ名は `owner/name` に揃え、`https://github.com/` と `git@github.com:` と末尾の `.git` を外し、大文字小文字を区別しません。`subtree`、`vendor`、`consumes`、`workflow-pin` の端点は同じ規則で折るので、表記が違ってもノードは一つです。出典の `repo` はマニフェストに書いた表記のままです。`subtree` は親から子で、`path` は prefix です。`vendor` はコピーを持つリポジトリから上流で、`path` は destination です。`prefix/vendor.lock.json` は親ではなく、その prefix の子のロックです。`workflow-pin` は workflow のあるリポジトリから固定先で、`path` は workflow ファイル、`pin` は小文字の SHA です。`uses:` の引用符と大文字の SHA を受けます。`repository` と `ref` は `actions/checkout` のステップから取ります。`consumes` は子から import 先で、配布パスは付けません。
+
+パスの `.` は捨てます。`..` や空のパスはファイルの同一性になりません。`path` がある辺は、正規化できないときに端点だけの比較へは倒れません。`subtree` と `vendor` の違反は、パスが無くても `double_distribution` の件数に入ります。
+
+`taxontoy graph --manifest` が読むファイルは、解決したあともマニフェストのディレクトリの中にあります。シンボリックリンクは、指す先がディレクトリの中でも外でも失敗です。
+
+`subtree` と `vendor` は `disjoint_with` です。`source` が同じで `path` が一致する、または一方が他方のディレクトリ接頭辞であるとき、同じファイルとリポジトリの組を二通りに配っています。`taxontoy properties` は違反と、その辺を報告します。違反が無いときの終了コードは 0、あるときは 1、`--strict` のときは 2 です。
+
+リポジトリの関係は、既存の OTL グラフ JSON（`nodes` と `edges`、関係名は `kind` または `relation`）で表します。記録から辺を作る `taxontoy graph --manifest` は、マニフェストに書いたファイルだけを読みます。`TAXONTOY_MANIFEST` と `TAXONTOY_GRAPH` もパスになります。
+
+実データは Aoi `320126983a992e30730350c5e9b0e4051c0d33d4`、TopOntoLogy `7c0823b4e9c7ec541d1a1f14c77ac85b72b83cb3`、OnTautoLogy `1909829db345870361ad5c6368bdf2adc199459c` です。この範囲の二重配布は 0 件です。出典は [fixtures/repos/manifest.json](fixtures/repos/manifest.json) に repo、commit、path で残しています。
+
 ## 被覆
 
 `taxontoy coverage` は、渡した OTL グラフの関係名を、分類済み・除外・未分類に分けます。三つの集合は互いに重ならず、足すとグラフに現れた関係名の全体になります。未分類が 1 件でもある、または表か除外リストにあってグラフに無い名前（stale）があるときは失敗です。割合の閾値はありません。
@@ -52,13 +75,17 @@ python -S taxontoy.py candidates otl-relations.json \
 python -S taxontoy.py rank-unclassified build/audit.json otl-relations.json \
   --profile audit \
   --format json
+python -S taxontoy.py graph --manifest fixtures/repos/manifest.json --format json
+python -S taxontoy.py properties otl-relations.json \
+  --graph fixtures/repos/graph.json \
+  --format json
 ```
 
 `--json` は `--format json` の省略です。両方を矛盾させて渡すと失敗します。`validate` の既定は text、`coverage` と `candidates` と `rank-unclassified` の既定は json です。報告にはツールの版、入力パス、各ファイルの sha256 が入ります。標準出力か `--output` で指定したファイル以外には書きません。表が壊れている、被覆が閉じていないときは終了コード 1、`--strict` のとき被覆の失敗は 2 です。順位の報告は、表を読めれば未分類や名前の無い辺があっても 0 です。
 
 ## 固定したグラフとの差分
 
-`coverage.json`、`candidates.json`、`ranking-audit.json`、`ranking-concepts.json`、`ranking-cases.json` は、ONTO の main への第一親マージ `8ca1ee5dc8c2714ddcdea6db6774f7168c0e617b` と、OnTautoLogy の main への第一親マージ `b062960e3ef63aa80d6d4c9b6e028219f1690bc4` から作った報告です。CI は同じ手順で作り直し、差分があれば失敗します。推移の成立と、宣言した非循環をグラフ上で証明することはここではありません。閉路の列挙は ONTO、サンプルのノード列は TopOntoLogy に残します。
+`coverage.json`、`candidates.json`、`ranking-audit.json`、`ranking-concepts.json`、`ranking-cases.json` は、ONTO の main への第一親マージ `8ca1ee5dc8c2714ddcdea6db6774f7168c0e617b` と、OnTautoLogy の main への第一親マージ `b062960e3ef63aa80d6d4c9b6e028219f1690bc4` から作った報告です。`fixtures/repos/graph.json` と `repos-properties.json` は、上の実データから作ったリポジトリ関係のグラフと、性質の検査です。CI は同じ手順で作り直し、差分があれば失敗します。推移の成立と、宣言した非循環をグラフ上で証明することはここではありません。閉路の列挙は ONTO、サンプルのノード列は TopOntoLogy に残します。
 
 Python 3.11 以降です。依存パッケージはありません。`since` は ASCII の `YYYY-MM-DD` だけです。テストは次です。テスト自身が行の実行を数えるため、プロセス内にトレーサを置きます。別のカバレッジ計測を同じプロセスに重ねると、プロセス内の行が数え漏れます。
 

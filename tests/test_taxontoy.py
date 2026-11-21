@@ -133,6 +133,27 @@ class CheckedInTableTests(unittest.TestCase):
         self.assertIn("depends_on", data["excluded"]["audit"])
         self.assertIn("overlapsWith", data["excluded"]["audit"])
         self.assertIn("negation", taxontoy.CLASS_DIRECTION)
+        self.assertEqual(data["repos"]["subtree"], "hierarchy")
+        self.assertEqual(data["repos"]["vendor"], "dependency")
+        self.assertEqual(data["schema"], "taxontoy-relations/2")
+        self.assertEqual(data["excluded"]["repos"], [])
+
+    def test_repos_profile_is_optional_on_a_version_2_table(self):
+        data = json.loads(TABLE.read_text(encoding="utf-8"))
+        del data["repos"]
+        del data["excluded"]["repos"]
+        for name in ("consumes", "subtree", "vendor", "workflow-pin"):
+            del data["direction"][name]
+        for name in ("subtree", "vendor"):
+            del data["properties"]["relations"][name]
+        self.assertEqual(taxontoy.validate_document(data), [])
+        present = minimal_table()
+        present["excluded"]["repos"] = []
+        self.assertIn("excluded: unknown profile repos", taxontoy.validate_document(present))
+        missing = minimal_table()
+        missing["repos"] = {"subtree": "hierarchy"}
+        missing["direction"]["subtree"] = "forward"
+        self.assertIn("excluded.repos: must be an array", taxontoy.validate_document(missing))
 
     def test_schema_lists_the_same_classes(self):
         schema = json.loads((ROOT / "otl-relations.schema.json").read_text(encoding="utf-8"))
@@ -1904,6 +1925,1172 @@ def _load_mutant(text):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+_SHA_A = "a" * 40
+_SHA_B = "b" * 40
+_SHA_C = "c" * 40
+
+
+def _source(repo, commit, path, role, file):
+    return {"commit": commit, "file": file, "path": path, "repo": repo, "role": role}
+
+
+def _write_manifest(directory, sources, name="manifest.json"):
+    return write_json(directory, name, {"sources": sources})
+
+
+class RepoRelationTests(unittest.TestCase):
+    def test_checked_in_graph_has_no_double_distribution(self):
+        graph_path = ROOT / "fixtures" / "repos" / "graph.json"
+        report_path = ROOT / "repos-properties.json"
+        graph = json.loads(graph_path.read_text(encoding="utf-8"))
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            graph_path.read_text(encoding="utf-8"),
+            json.dumps(graph, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+        self.assertEqual(
+            report_path.read_text(encoding="utf-8"),
+            json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+        self.assertEqual(report["command"], "properties")
+        self.assertEqual(report["version"], taxontoy.__version__)
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(report["skipped"], 0)
+        self.assertEqual(report["violations"], [])
+        self.assertEqual(report["double_distribution"], {"count": 0, "pairs": []})
+        self.assertEqual(report["counts"], {
+            "consumes": 16, "subtree": 6, "vendor": 25, "workflow-pin": 12,
+        })
+        self.assertEqual(
+            [(item["proposed"], item["relation"]) for item in graph["mapping"]],
+            [
+                ("subtree-of", "subtree"),
+                ("vendors", "vendor"),
+                ("pins", "workflow-pin"),
+                ("consumes", "consumes"),
+            ],
+        )
+        edges = graph["edges"]
+        self.assertIn({
+            "kind": "subtree",
+            "path": "blueprobe",
+            "provenance": {
+                "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+                "path": "child-heads.json",
+                "repo": "myon-bioinformatics/Aoi",
+            },
+            "source": "myon-bioinformatics/aoi",
+            "target": "myon-bioinformatics/blueprobe",
+        }, edges)
+        self.assertTrue(any(
+            edge["kind"] == "vendor"
+            and edge["source"] == "myon-bioinformatics/aoi"
+            and edge["target"] == "myon-bioinformatics/markdown"
+            and edge["path"] == "vendor/markdown.py"
+            and edge["provenance"]["path"] == "vendor.lock.json"
+            for edge in edges
+        ))
+        self.assertTrue(any(
+            edge["kind"] == "vendor"
+            and edge["source"] == "myon-bioinformatics/blueprobe"
+            and edge["provenance"]["path"] == "blueprobe/vendor.lock.json"
+            for edge in edges
+        ))
+        self.assertTrue(any(
+            edge["kind"] == "workflow-pin"
+            and             edge["source"] == "myon-bioinformatics/topontology"
+            and edge["target"] == "myon-bioinformatics/onto"
+            and edge["pin"] == "8ca1ee5dc8c2714ddcdea6db6774f7168c0e617b"
+            for edge in edges
+        ))
+        self.assertTrue(any(
+            edge["kind"] == "consumes"
+            and edge["source"] == "myon-bioinformatics/queryu"
+            and edge["target"] == "myon-bioinformatics/blueprobe"
+            and edge["origin"] == "blueprobe"
+            for edge in edges
+        ))
+        self.assertNotIn("5c138352", graph_path.read_text(encoding="utf-8"))
+        rebuilt = run(["graph", "--manifest", "fixtures/repos/manifest.json", "--format", "json"])
+        self.assertEqual(rebuilt.returncode, 0, rebuilt.stderr)
+        self.assertEqual(json.loads(rebuilt.stdout)["edges"], edges)
+        checked = run([
+            "properties", "otl-relations.json", "--graph", "fixtures/repos/graph.json", "--format", "text",
+        ])
+        self.assertEqual(checked.returncode, 0, checked.stderr + checked.stdout)
+        self.assertIn("double_distribution 0", checked.stdout)
+        graph_text = run(["graph", "--manifest", "fixtures/repos/manifest.json", "--format", "text"])
+        self.assertEqual(graph_text.returncode, 0, graph_text.stderr)
+        self.assertTrue(json.loads(rebuilt.stdout)["ok"])
+        self.assertIn(f"nodes {len(graph['nodes'])}", graph_text.stdout)
+        self.assertIn(f"edges {len(edges)}", graph_text.stdout)
+        self.assertIn(
+            "edge subtree myon-bioinformatics/aoi myon-bioinformatics/blueprobe path blueprobe",
+            graph_text.stdout,
+        )
+        self.assertIn("mapping subtree-of subtree", graph_text.stdout)
+        self.assertIn("mapping pins workflow-pin", graph_text.stdout)
+
+    def test_path_overlap_reports_both_edges_and_endpoint_pairs_do_too(self):
+        table = minimal_table()
+        table["properties"]["relations"]["narrower"] = {
+            "disjoint_with": [{"relation": "similarTo", "since": "2026-11-15", "reason": "endpoints differ"}],
+        }
+        table["properties"]["relations"]["similarTo"] = {
+            "disjoint_with": [{"relation": "narrower", "since": "2026-11-15", "reason": "endpoints differ"}],
+        }
+        table["repos"] = {"subtree": "hierarchy", "vendor": "dependency"}
+        table["direction"]["subtree"] = "forward"
+        table["direction"]["vendor"] = "forward"
+        table["excluded"]["repos"] = []
+        table["properties"]["relations"]["subtree"] = {
+            "disjoint_with": [{"relation": "vendor", "since": "2026-11-21", "reason": "one distribution"}],
+        }
+        edges = [
+            {"kind": "subtree", "source": "hub", "target": "child", "path": "pkg"},
+            {"kind": "vendor", "source": "hub", "target": "up", "path": "pkg/vendor/lib.py"},
+            {"kind": "vendor", "source": "other", "target": "up", "path": "pkg/vendor/lib.py"},
+            {"kind": "narrower", "source": "p", "target": "c"},
+            {"kind": "similarTo", "source": "p", "target": "c"},
+            {"kind": "similarTo", "source": "p", "target": "d"},
+            {"relation": "vendor", "source": "hub", "target": "up", "path": "pkg"},
+            {"kind": "", "source": "hub", "target": "up"},
+            "not-an-edge",
+        ]
+        violations, skipped = taxontoy.property_violations(table, edges)
+        self.assertEqual(skipped, 2)
+        kinds = {tuple(item["relations"]) for item in violations}
+        self.assertEqual(kinds, {("narrower", "similarTo"), ("subtree", "vendor")})
+        distributed = [item for item in violations if item["relations"] == ["subtree", "vendor"]]
+        self.assertEqual(len(distributed), 2)
+        prefixed = next(item for item in distributed if item["pair"].get("prefix") == "pkg")
+        self.assertEqual(prefixed["pair"]["repository"], "hub")
+        self.assertEqual(prefixed["pair"]["path"], "pkg/vendor/lib.py")
+        self.assertEqual({edge["kind"] for edge in prefixed["edges"]}, {"subtree", "vendor"})
+        exact = next(item for item in distributed if "prefix" not in item["pair"])
+        self.assertEqual(exact["pair"], {"path": "pkg", "repository": "hub"})
+        ended = next(item for item in violations if item["relations"] == ["narrower", "similarTo"])
+        self.assertEqual(ended["pair"], {"source": "p", "target": "c"})
+        self.assertEqual(taxontoy._double_distribution(violations)["count"], 2)
+        with tempfile.TemporaryDirectory() as tmp:
+            table_path = write_json(tmp, "table.json", table)
+            graph_path = write_json(tmp, "graph.json", {"edges": edges, "nodes": []})
+            text = run(["properties", str(table_path), "--graph", str(graph_path), "--format", "text"])
+            strict = run(["properties", str(table_path), "--graph", str(graph_path), "--strict", "--json"])
+        self.assertEqual(text.returncode, 1, text.stderr + text.stdout)
+        self.assertIn("violation disjoint_with subtree vendor repository hub path pkg/vendor/lib.py", text.stdout)
+        self.assertIn("violation disjoint_with narrower similarTo source p target c", text.stdout)
+        self.assertIn("edge subtree hub child path pkg", text.stdout)
+        self.assertEqual(strict.returncode, 2)
+        self.assertFalse(json.loads(strict.stdout)["ok"])
+
+    def test_manifest_and_record_errors_are_explicit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            samples = [
+                ({}, "non-empty sources"),
+                ({"sources": []}, "non-empty sources"),
+                ({"sources": "nope"}, "non-empty sources"),
+                ({"sources": ["nope"]}, "must be an object"),
+                ({"sources": [{"role": "heads"}]}, "missing commit"),
+                ({"sources": [_source("hub", "abc", "heads.json", "heads", "heads.json")]}, "40 hex"),
+                ({"sources": [_source("hub", _SHA_A, "heads.json", "nope", "heads.json")]}, "unknown role"),
+                ({"sources": [_source("hub", _SHA_A, "heads.json", "heads", "/etc/passwd")]}, "under the manifest"),
+                ({"sources": [_source("hub", _SHA_A, "heads.json", "heads", "../heads.json")]}, "under the manifest"),
+                ({"sources": [_source("hub", _SHA_A, "heads.json", "heads", "missing.json")]}, "file is missing"),
+            ]
+            for payload, message in samples:
+                path = write_json(tmp, "manifest.json", payload)
+                result = run(["graph", "--manifest", str(path)])
+                self.assertEqual(result.returncode, 1, payload)
+                self.assertIn(message, result.stderr)
+            write_json(tmp, "bad.json", [])
+            array = run(["graph", "--manifest", str(tmp / "bad.json")])
+            self.assertIn("non-empty sources", array.stderr)
+            (tmp / "dup.json").write_text('{"sources":[{"commit":"a"}]}', encoding="utf-8")
+            # duplicate keys are rejected by the loader
+            (tmp / "dup.json").write_text(
+                '{"schema":"x","schema":"y"}\n', encoding="utf-8",
+            )
+            self.assertIn("duplicate key", run(["graph", "--manifest", str(tmp / "dup.json")]).stderr)
+
+            heads = {
+                "heads": {
+                    "": {"optional": {"subtree_prefix": "child"}},
+                    "hub/child": [],
+                    "hub/plain": {"sha": "1"},
+                    "hub/odd": {"optional": []},
+                    "hub/bare": {"optional": {}},
+                    "hub/deep": {"optional": {"subtree_prefix": "a/b"}},
+                    "hub/dot": {"optional": {"subtree_prefix": "."}},
+                    "hub/child-a": {"optional": {"subtree_prefix": "same"}},
+                    "hub/child-b": {"optional": {"subtree_prefix": "same"}},
+                    "hub/only": {"optional": {"subtree_prefix": "only"}},
+                },
+            }
+            write_json(tmp, "heads.json", heads)
+            rows = taxontoy._manifest_rows(str(_write_manifest(tmp, [
+                _source("hub", _SHA_A, "heads.json", "heads", "heads.json"),
+            ])))
+            loaded = [{**row, "text": Path(row["full"]).read_text(encoding="utf-8")} for row in rows]
+            with self.assertRaises(ValueError) as bad_head:
+                taxontoy._prefix_rows(loaded)
+            self.assertIn("each head must name a repository", str(bad_head.exception))
+
+            write_json(tmp, "heads.json", ["nope"])
+            loaded[0]["text"] = (tmp / "heads.json").read_text(encoding="utf-8")
+            with self.assertRaises(ValueError) as bad_doc:
+                taxontoy._prefix_rows(loaded)
+            self.assertIn("heads must be an object", str(bad_doc.exception))
+
+            write_json(tmp, "heads.json", {"heads": {"hub/only": {"optional": {"subtree_prefix": "only"}}}})
+            (tmp / "note.json").write_text("{", encoding="utf-8")
+            loaded[0]["text"] = (tmp / "note.json").read_text(encoding="utf-8")
+            with self.assertRaises(ValueError) as bad_json:
+                taxontoy._prefix_rows(loaded)
+            self.assertIn("invalid JSON", str(bad_json.exception))
+
+            (tmp / "heads.json").write_text(
+                '{"heads":{"hub/only":{"optional":{"subtree_prefix":"only"}},"hub/only":{}}}\n',
+                encoding="utf-8",
+            )
+            loaded[0]["text"] = (tmp / "heads.json").read_text(encoding="utf-8")
+            with self.assertRaises(ValueError) as dup:
+                taxontoy._prefix_rows(loaded)
+            self.assertIn("duplicate key", str(dup.exception))
+            loaded[0]["text"] = '{"heads":{"hub/odd":{"optional":[]}}}\n'
+            with self.assertRaises(ValueError) as odd:
+                taxontoy._prefix_rows(loaded)
+            self.assertIn("optional must be an object", str(odd.exception))
+            loaded[0]["text"] = '{"heads":{"hub/bare":{"optional":{}}}}\n'
+            self.assertEqual(taxontoy._prefix_rows(loaded), [])
+            loaded[0]["text"] = '{"heads":{"hub/plain":{"sha":"1"}}}\n'
+            self.assertEqual(taxontoy._prefix_rows(loaded), [])
+            loaded[0]["text"] = '{"heads":{"hub/deep":{"optional":{"subtree_prefix":"a/b"}}}}\n'
+            with self.assertRaises(ValueError) as deep:
+                taxontoy._prefix_rows(loaded)
+            self.assertIn("one path segment", str(deep.exception))
+
+    def test_lock_siblings_and_workflow_edges_follow_the_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            write_json(tmp, "heads.json", {"heads": {
+                "hub/left": {"optional": {"subtree_prefix": "left"}},
+                "hub/right": {"optional": {"subtree_prefix": "right"}},
+                "hub/same-a": {"optional": {"subtree_prefix": "same"}},
+                "hub/same-b": {"optional": {"subtree_prefix": "same"}},
+            }})
+            write_json(tmp, "root.lock.json", {"schema": "vendor-lock/1", "files": [
+                {"repository": "up/lib", "source": "lib.py", "destination": "vendor/lib.py"},
+            ]})
+            write_json(tmp, "child.lock.json", {"schema": "vendor-lock/1", "files": [
+                {
+                    "repository": "up/lib",
+                    "source": "lib.py",
+                    "destination": "vendor/lib.py",
+                    "commit": _SHA_B,
+                },
+            ]})
+            write_json(tmp, "same.lock.json", {"schema": "nope"})
+            (tmp / "siblings.py").write_text(
+                "SIBLINGS = {'left': ('right', 'left/self', '.', 'unknown'), 'missing': ('right',)}\n"
+                "SIBLINGS['right'] = ('left/core',)\n",
+                encoding="utf-8",
+            )
+            (tmp / "ci.yml").write_text(
+                "\n".join([
+                    "jobs:",
+                    "  a:",
+                    "    uses: owner/reusable/.github/workflows/x.yml@" + _SHA_C,
+                    "    steps:",
+                    "      - uses: ./.github/workflows/local.yml@" + _SHA_A,
+                    "      - uses: actions/checkout@" + _SHA_A,
+                    "        with:",
+                    "          repository: up/lib",
+                    "          ref: " + _SHA_B,
+                    "      - uses: actions/checkout@" + _SHA_A,
+                    "        with:",
+                    "          repository: up/lib/extra",
+                    "          ref: " + _SHA_B,
+                    "      - run: echo",
+                    "        with:",
+                    "          repository: up/lib",
+                    "          ref: " + ("d" * 40),
+                ]),
+                encoding="utf-8",
+            )
+            manifest = _write_manifest(tmp, [
+                _source("hub", _SHA_A, "heads.json", "heads", "heads.json"),
+                _source("hub", _SHA_A, "vendor.lock.json", "lock", "root.lock.json"),
+                _source("hub", _SHA_A, "left/vendor.lock.json", "lock", "child.lock.json"),
+                _source("hub", _SHA_A, "same/vendor.lock.json", "lock", "same.lock.json"),
+                _source("hub", _SHA_A, "aoi.py", "siblings", "siblings.py"),
+                _source("hub", _SHA_A, ".github/workflows/ci.yml", "workflow", "ci.yml"),
+            ])
+            rows = []
+            for row in taxontoy._manifest_rows(str(manifest)):
+                rows.append({**row, "text": Path(row["full"]).read_text(encoding="utf-8")})
+            records = taxontoy._prefix_rows(rows)
+            self.assertEqual(taxontoy._lock_holder(rows[1], records), "hub")
+            self.assertEqual(taxontoy._lock_holder(rows[2], records), "hub/left")
+            with self.assertRaises(ValueError) as clash:
+                taxontoy._lock_holder(rows[3], records)
+            self.assertIn("more than one repository", str(clash.exception))
+            with self.assertRaises(ValueError) as schema:
+                taxontoy._lock_edges(rows[3], records)
+            self.assertIn("vendor-lock/1", str(schema.exception))
+            bad_files = dict(rows[1])
+            bad_files["text"] = '{"schema":"vendor-lock/1","files":{}}\n'
+            with self.assertRaises(ValueError) as files:
+                taxontoy._lock_edges(bad_files, records)
+            self.assertIn("files must be an array", str(files.exception))
+            bad_row = dict(rows[1])
+            bad_row["text"] = '{"schema":"vendor-lock/1","files":["x"]}\n'
+            with self.assertRaises(ValueError) as item:
+                taxontoy._lock_edges(bad_row, records)
+            self.assertIn("must be an object", str(item.exception))
+            bad_pin = dict(rows[2])
+            bad_pin["text"] = json.dumps({"schema": "vendor-lock/1", "files": [{
+                "repository": "up/lib", "source": "lib.py", "destination": "vendor/lib.py", "commit": "nope",
+            }]})
+            with self.assertRaises(ValueError) as pin:
+                taxontoy._lock_edges(bad_pin, records)
+            self.assertIn("commit must be 40 hex", str(pin.exception))
+            root_edges = taxontoy._lock_edges(rows[1], records)
+            self.assertEqual(root_edges[0]["source"], "hub")
+            self.assertNotIn("pin", root_edges[0])
+            bad_dest = dict(rows[1])
+            bad_dest["text"] = json.dumps({"schema": "vendor-lock/1", "files": [{
+                "repository": "up/lib", "source": "lib.py", "destination": "../out.py",
+            }]})
+            with self.assertRaises(ValueError) as dest:
+                taxontoy._lock_edges(bad_dest, records)
+            self.assertIn("destination", str(dest.exception))
+            with self.assertRaises(ValueError):
+                taxontoy._consume_edges(rows[4], records)
+            (tmp / "siblings.py").write_text(
+                "SIBLINGS = {'left': ('right', 'left/self', '.', 'unknown'), 'right': ('left/core',)}\n",
+                encoding="utf-8",
+            )
+            rows[4]["text"] = (tmp / "siblings.py").read_text(encoding="utf-8")
+            consumed = taxontoy._consume_edges(rows[4], records)
+            pairs = {(edge["source"], edge["target"], edge["origin"]) for edge in consumed}
+            self.assertIn(("hub/left", "hub/right", "right"), pairs)
+            self.assertIn(("hub/right", "hub/left", "left/core"), pairs)
+            self.assertFalse(any(edge["origin"] in {".", "left/self", "unknown"} for edge in consumed))
+            pins = {(edge["target"], edge["pin"]) for edge in taxontoy._pin_edges(rows[5])}
+            self.assertEqual(pins, {
+                ("owner/reusable", _SHA_C),
+                ("actions/checkout", _SHA_A),
+                ("up/lib", _SHA_B),
+            })
+            self.assertNotIn(("up/lib", "d" * 40), pins)
+            self.assertEqual(sum(1 for edge in taxontoy._pin_edges(rows[5]) if edge["target"] == "actions/checkout"), 1)
+
+            broken = [
+                ("SIBLINGS = {'left': object()}\n", "literal"),
+                ("def f():\n  pass\n", "not found"),
+                ("SIBLINGS = []\n", "must be a dict"),
+                ("SIBLINGS['left'] = ('right',)\n", "must be a dict"),
+                ("SIBLINGS: int = {'left': ()}\n", "list directories"),
+                ("SIBLINGS = {'left': [1]}\n", "non-empty string"),
+                ("SIBLINGS = {'nope': ('right',)}\n", "not a subtree prefix"),
+                ("(\n", "literal"),
+            ]
+            for text, message in broken:
+                (tmp / "siblings.py").write_text(text, encoding="utf-8")
+                rows[4]["text"] = text
+                with self.assertRaises(ValueError) as exc:
+                    taxontoy._consume_edges(rows[4], records)
+                self.assertIn(message, str(exc.exception), text)
+            self.assertIsNone(taxontoy._github_repo("only"))
+            self.assertIsNone(taxontoy._github_repo(".owner/name"))
+            self.assertIsNone(taxontoy._github_repo("owner/.name"))
+            self.assertIsNone(taxontoy._github_repo("owner/bad!"))
+            self.assertEqual(taxontoy._child_repo("missing", records, "hub"), None)
+            with self.assertRaises(ValueError):
+                taxontoy._child_repo("same", records, "hub")
+
+    def test_property_declarations_without_a_partner_add_no_hit(self):
+        table = {"properties": {"relations": {
+            "subtree": {"disjoint_with": ["vendor", {"since": "2026-11-21"}]},
+            "vendor": [],
+            "other": "nope",
+        }}}
+        violations, skipped = taxontoy.property_violations(table, [])
+        self.assertEqual((violations, skipped), ([], 0))
+        self.assertEqual(taxontoy.property_violations({"properties": []}, [])[0], [])
+        self.assertEqual(taxontoy.property_violations({}, [])[0], [])
+        mixed = [
+            {"kind": "subtree", "source": "hub", "target": "child", "path": "pkg"},
+            {"kind": "vendor", "source": "hub", "target": "up"},
+        ]
+        table = {"properties": {"relations": {"subtree": {"disjoint_with": [
+            {"relation": "vendor", "since": "2026-11-21", "reason": "pair"},
+            {"relation": "subtree", "since": "2026-11-21", "reason": "self"},
+        ]}}}}
+        violations, skipped = taxontoy.property_violations(table, mixed)
+        self.assertEqual(violations, [])
+        self.assertEqual(skipped, 0)
+        ended = taxontoy._double_distribution([{
+            "relations": ["vendor", "subtree"],
+            "pair": {"source": "hub", "target": "child"},
+        }, {
+            "relations": ["subtree", "vendor"],
+            "pair": {"source": "hub", "target": "child"},
+        }, {
+            "relations": ["subtree", "vendor"],
+            "pair": {"path": "pkg/lib.py", "prefix": "pkg", "repository": "hub"},
+        }, {
+            "relations": ["subtree", "vendor"],
+            "pair": {"path": "pkg/lib.py", "prefix": "pkg", "repository": "hub"},
+        }])
+        self.assertEqual(ended, {"count": 2, "pairs": [
+            {"path": "pkg/lib.py", "prefix": "pkg", "repository": "hub"},
+            {"source": "hub", "target": "child"},
+        ]})
+        self.assertIsNone(taxontoy._norm_path("././"))
+        self.assertEqual(taxontoy._norm_path("./a/b"), "a/b")
+        self.assertEqual(taxontoy._norm_path("a/./b"), "a/b")
+        self.assertIsNone(taxontoy._norm_path("./"))
+        self.assertIsNone(taxontoy._norm_path(" pkg"))
+        self.assertIsNone(taxontoy._norm_path("a/../b"))
+        self.assertIsNone(taxontoy._norm_path("a//b"))
+        self.assertIsNone(taxontoy._holder_path({"source": "hub", "path": " "}))
+        self.assertIsNone(taxontoy._holder_path({"path": "pkg"}))
+        self.assertFalse(taxontoy._paths_overlap("blue", "blueprobe"))
+
+    def test_cli_accepts_env_paths_and_rejects_conflicts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            write_json(tmp, "heads.json", {"heads": {"hub/child": {"optional": {"subtree_prefix": "child"}}}})
+            manifest = _write_manifest(tmp, [_source("hub", _SHA_A, "child-heads.json", "heads", "heads.json")])
+            env = os.environ.copy()
+            env["TAXONTOY_MANIFEST"] = f"  {manifest}  "
+            env.pop("TAXONTOY_GRAPH", None)
+            from_env = run(["graph", "--format", "json"], env=env)
+            self.assertEqual(from_env.returncode, 0, from_env.stderr)
+            self.assertEqual(json.loads(from_env.stdout)["edges"][0]["target"], "hub/child")
+            missing = run(["graph"], env={**env, "TAXONTOY_MANIFEST": "   "})
+            self.assertEqual(missing.returncode, 1)
+            self.assertIn("TAXONTOY_MANIFEST", missing.stderr)
+            out = tmp / "out.json"
+            written = run(["graph", "--manifest", str(manifest), "--output", str(out)], env=env)
+            self.assertEqual(written.returncode, 0)
+            self.assertEqual(written.stdout, "")
+            self.assertTrue(out.is_file())
+            conflict = run(["graph", "--manifest", str(manifest), "--json", "--format", "text"], env=env)
+            self.assertEqual(conflict.returncode, 1)
+            self.assertIn("disagree", conflict.stderr)
+
+            table = minimal_table()
+            table["repos"] = {"subtree": "hierarchy"}
+            table["direction"]["subtree"] = "forward"
+            table["excluded"]["repos"] = []
+            table_path = write_json(tmp, "table.json", table)
+            graph = write_json(tmp, "graph.json", {"edges": []})
+            env["TAXONTOY_TABLE"] = str(table_path)
+            env["TAXONTOY_GRAPH"] = f"  {graph}  "
+            env.pop("TAXONTOY_MANIFEST")
+            props = run(["properties", "--format", "json"], env=env)
+            self.assertEqual(props.returncode, 0, props.stderr + props.stdout)
+            self.assertEqual(json.loads(props.stdout)["counts"], {})
+            manifest_env = dict(env)
+            manifest_env.pop("TAXONTOY_GRAPH", None)
+            from_manifest = run(
+                ["properties", str(table_path), "--manifest", str(manifest), "--format", "json"],
+                env=manifest_env,
+            )
+            self.assertEqual(from_manifest.returncode, 0, from_manifest.stderr + from_manifest.stdout)
+            self.assertEqual(json.loads(from_manifest.stdout)["counts"]["subtree"], 1)
+            both = run(["properties", "--graph", str(graph), "--manifest", str(manifest)], env=env)
+            self.assertEqual(both.returncode, 1)
+            self.assertIn("pass --graph or --manifest", both.stderr)
+            neither = run(["properties", str(table_path)], env={**os.environ, "TAXONTOY_GRAPH": "", "TAXONTOY_MANIFEST": ""})
+            self.assertIn("pass --graph or --manifest", neither.stderr)
+            bad_graph = write_json(tmp, "bad-graph.json", {"nodes": []})
+            bad = run(["properties", str(table_path), "--graph", str(bad_graph)], env=env)
+            self.assertIn("edges array", bad.stderr)
+            broken = minimal_table()
+            del broken["excluded"]
+            broken_path = write_json(tmp, "broken.json", broken)
+            rejected = run(["properties", str(broken_path), "--graph", str(graph), "--json"], env=env)
+            self.assertEqual(rejected.returncode, 1)
+            self.assertIn("missing key: excluded", rejected.stdout)
+            self.assertIsNone(taxontoy._elsewhere({"audit": {}, "concepts": {}, "cases": {}, "repos": []}, "audit", "subtree"))
+            self.assertEqual(
+                taxontoy._elsewhere({"audit": {}, "concepts": {}, "cases": {}, "repos": {"subtree": "hierarchy"}}, "audit", "subtree"),
+                "repos",
+            )
+
+
+class ReviewFixTests(unittest.TestCase):
+    def test_manifest_symlinks_cannot_escape_the_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            outside = base / "outside"
+            outside.mkdir()
+            (outside / "heads.json").write_text(
+                '{"heads":{"ext/sub":{"optional":{"subtree_prefix":"sub"}}}}\n',
+                encoding="utf-8",
+            )
+            mdir = base / "man"
+            mdir.mkdir()
+            (mdir / "inside").mkdir()
+            (mdir / "sym_file.json").symlink_to(outside / "heads.json")
+            (mdir / "sym_dir").symlink_to(outside, target_is_directory=True)
+            manifest = _write_manifest(mdir, [
+                _source("ext/hub", _SHA_A, "child-heads.json", "heads", "sym_file.json"),
+            ])
+            with self.assertRaises(ValueError) as file_link:
+                taxontoy._manifest_rows(str(manifest))
+            self.assertIn("stay under the manifest directory", str(file_link.exception))
+            manifest = _write_manifest(mdir, [
+                _source("ext/hub", _SHA_A, "other-heads.json", "heads", "sym_dir/heads.json"),
+            ])
+            with self.assertRaises(ValueError) as dir_link:
+                taxontoy._manifest_rows(str(manifest))
+            self.assertIn("stay under the manifest directory", str(dir_link.exception))
+            manifest = _write_manifest(mdir, [
+                _source("ext/hub", _SHA_A, "inside", "heads", "inside"),
+            ])
+            with self.assertRaises(ValueError) as directory:
+                taxontoy._manifest_rows(str(manifest))
+            self.assertIn("stay under the manifest directory", str(directory.exception))
+            (mdir / "real.json").write_text("{}\n", encoding="utf-8")
+            (mdir / "link.json").symlink_to("real.json")
+            manifest = _write_manifest(mdir, [
+                _source("ext/hub", _SHA_A, "child-heads.json", "heads", "link.json"),
+            ])
+            with self.assertRaises(ValueError) as inside:
+                taxontoy._manifest_rows(str(manifest))
+            self.assertIn("stay under the manifest directory", str(inside.exception))
+
+    def test_paths_and_repository_names_compare_after_normalization(self):
+        table = {
+            "properties": {"relations": {
+                "subtree": {"disjoint_with": [{"relation": "vendor", "since": "2026-11-21", "reason": "pair"}]},
+                "narrower": {"disjoint_with": [{"relation": "similarTo", "since": "2026-11-15", "reason": "pair"}]},
+            }},
+        }
+        dotted = [
+            {"kind": "subtree", "source": "https://github.com/MyOrg/Aoi.git", "target": "c", "path": "./a/b"},
+            {"kind": "vendor", "source": "myorg/aoi", "target": "c", "path": "a/b"},
+        ]
+        hits, _skipped = taxontoy.property_violations(table, dotted)
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0]["pair"]["repository"], "myorg/aoi")
+        self.assertEqual(hits[0]["pair"]["path"], "a/b")
+        self.assertEqual(taxontoy._double_distribution(hits)["count"], 1)
+        different = [
+            {"kind": "subtree", "source": "hub", "target": "c", "path": "./a"},
+            {"kind": "vendor", "source": "hub", "target": "c", "path": "./b"},
+        ]
+        empty = [
+            {"kind": "subtree", "source": "hub", "target": "c", "path": ""},
+            {"kind": "vendor", "source": "hub", "target": "c", "path": "/"},
+        ]
+        self.assertEqual(taxontoy.property_violations(table, different)[0], [])
+        self.assertEqual(taxontoy.property_violations(table, empty)[0], [])
+        other = [
+            {"kind": "narrower", "source": "hub", "target": "c", "path": "pkg"},
+            {"kind": "similarTo", "source": "hub", "target": "c", "path": "pkg/lib.py"},
+        ]
+        found, _skipped = taxontoy.property_violations(table, other)
+        self.assertEqual(len(found), 1)
+        self.assertEqual(taxontoy._double_distribution(found), {"count": 0, "pairs": []})
+        self.assertEqual(
+            taxontoy._github_repo("git@github.com:MyOrg/Name.git"),
+            "myorg/name",
+        )
+        self.assertEqual(
+            taxontoy._github_repo("https://github.com/MyOrg/Name"),
+            "myorg/name",
+        )
+        self.assertIsNone(taxontoy._github_repo(None))
+        self.assertIsNone(taxontoy._github_repo("up/lib/extra", exact=True))
+        self.assertEqual(taxontoy._github_repo("owner//name"), "owner/name")
+        self.assertEqual(
+            taxontoy._workflow_pins("- uses: actions/checkout@" + _SHA_A + "\n  repository: up/lib\n"),
+            [("actions/checkout", _SHA_A)],
+        )
+        bare = taxontoy._pin_edges({
+            "commit": _SHA_A,
+            "path": ".github/workflows/ci.yml",
+            "repo": " ",
+            "role": "workflow",
+            "text": "- uses: actions/checkout@" + _SHA_A + "\n",
+        })
+        self.assertEqual(bare[0]["source"], " ")
+        self.assertEqual(taxontoy._double_distribution([{
+            "relations": ["subtree", "vendor"],
+            "pair": {"target": "child"},
+        }])["pairs"], [{"source": None, "target": "child"}])
+
+    def test_workflow_lines_and_sorted_graph_are_exact(self):
+        first = "- uses: actions/checkout@" + _SHA_A + "\n  repository: up/lib\n  ref: " + _SHA_B + "\n"
+        self.assertEqual(taxontoy._workflow_pins(first), [
+            ("actions/checkout", _SHA_A),
+            ("up/lib", _SHA_B),
+        ])
+        quoted = '  - uses: "actions/checkout@' + ("A" * 40) + '"\n'
+        self.assertEqual(taxontoy._workflow_pins(quoted), [("actions/checkout", "a" * 40)])
+        direct = "\n".join([
+            "jobs:",
+            "      - uses: actions/checkout@" + _SHA_A,
+            "        repository: up/lib",
+            "        ref: " + _SHA_B,
+        ])
+        self.assertEqual(
+            taxontoy._workflow_pins(direct),
+            [("actions/checkout", _SHA_A), ("up/lib", _SHA_B)],
+        )
+        local = [{
+            "commit": _SHA_A,
+            "path": ".github/workflows/ci.yml",
+            "repo": "hub/app",
+            "role": "workflow",
+            "text": "      - uses: ./.github/workflows/local.yml@" + _SHA_A + "\n",
+        }]
+        self.assertEqual(taxontoy.build_repo_graph(local)["edges"], [])
+        late = {
+            "commit": _SHA_A, "path": "child-heads.json", "repo": "hub/app", "role": "heads",
+            "text": json.dumps({"heads": {
+                "hub/z": {"optional": {"subtree_prefix": "z"}},
+                "hub/a": {"optional": {"subtree_prefix": "a"}},
+            }}),
+        }
+        built = taxontoy.build_repo_graph([late])
+        dumped = [json.dumps(edge, sort_keys=True) for edge in built["edges"]]
+        self.assertEqual(dumped, sorted(dumped))
+        self.assertEqual(built["edges"][0]["target"], "hub/a")
+        violations, _skipped = taxontoy.property_violations(
+            {"properties": {"relations": {"subtree": {"disjoint_with": [
+                {"relation": "vendor", "since": "2026-11-21", "reason": "pair"},
+            ]}}}},
+            [
+                {"kind": "subtree", "source": "hub", "target": "c", "path": "z"},
+                {"kind": "vendor", "source": "hub", "target": "u", "path": "z"},
+                {"kind": "subtree", "source": "hub", "target": "c", "path": "a"},
+                {"kind": "vendor", "source": "hub", "target": "u", "path": "a"},
+            ],
+        )
+        rendered = [json.dumps(item, sort_keys=True) for item in violations]
+        self.assertEqual(rendered, sorted(rendered))
+        counted = taxontoy._double_distribution(list(reversed(violations)))
+        self.assertEqual(
+            [row["path"] for row in counted["pairs"]],
+            ["a", "z"],
+        )
+
+    def test_one_repository_is_one_node_and_the_remaining_checks_hold(self):
+        sha = "a" * 40
+        rows = [
+            {
+                "commit": sha, "path": "child-heads.json", "repo": "MyOrg/Aoi", "role": "heads",
+                "text": json.dumps({"heads": {
+                    "MyOrg/Aoi": {"optional": {"subtree_prefix": "child"}},
+                    "MyOrg/Kid": {"optional": {"subtree_prefix": "kid"}},
+                }}),
+            },
+            {
+                "commit": sha, "path": "vendor.lock.json", "repo": "MyOrg/Aoi", "role": "lock",
+                "text": json.dumps({"schema": "vendor-lock/1", "files": [{
+                    "repository": "https://github.com/MyOrg/Lib.git",
+                    "source": "a.py",
+                    "destination": "vendor/a.py",
+                }]}),
+            },
+            {
+                "commit": sha, "path": "aoi.py", "repo": "MyOrg/Aoi", "role": "siblings",
+                "text": "SIBLINGS = {'child': ('kid',)}\n",
+            },
+            {
+                "commit": sha, "path": ".github/workflows/ci.yml", "repo": "MyOrg/Aoi", "role": "workflow",
+                "text": "- uses: actions/checkout@" + sha + "\n",
+            },
+        ]
+        graph = taxontoy.build_repo_graph(rows)
+        self.assertEqual(
+            [node["id"] for node in graph["nodes"]],
+            ["actions/checkout", "myorg/aoi", "myorg/kid", "myorg/lib"],
+        )
+        self.assertEqual(
+            {(edge["kind"], edge["source"], edge["target"]) for edge in graph["edges"]},
+            {
+                ("subtree", "myorg/aoi", "myorg/aoi"),
+                ("subtree", "myorg/aoi", "myorg/kid"),
+                ("vendor", "myorg/aoi", "myorg/lib"),
+                ("consumes", "myorg/aoi", "myorg/kid"),
+                ("workflow-pin", "myorg/aoi", "actions/checkout"),
+            },
+        )
+        self.assertEqual(
+            [item["repo"] for item in graph["provenance"]],
+            ["MyOrg/Aoi", "MyOrg/Aoi", "MyOrg/Aoi", "MyOrg/Aoi"],
+        )
+        reversed_rows = [
+            {"commit": sha, "path": "z.yml", "repo": "z/repo", "role": "workflow", "text": ""},
+            {"commit": sha, "path": "a.yml", "repo": "a/repo", "role": "workflow", "text": ""},
+        ]
+        self.assertEqual(
+            [(item["repo"], item["path"]) for item in taxontoy.build_repo_graph(reversed_rows)["provenance"]],
+            [("a/repo", "a.yml"), ("z/repo", "z.yml")],
+        )
+        self.assertEqual(taxontoy._repo_key("up/lib/extra"), "up/lib/extra")
+        self.assertEqual(
+            taxontoy._workflow_pins(
+                "- uses: actions/checkout@" + sha + "\n  repository: up/lib/extra\n  ref: " + ("b" * 40) + "\n"
+            ),
+            [("actions/checkout", sha)],
+        )
+        table = {"properties": {"relations": {"subtree": {"disjoint_with": [
+            {"relation": "vendor", "since": "2026-11-21", "reason": "pair"},
+        ]}}}}
+        one_path, _skipped = taxontoy.property_violations(table, [
+            {"kind": "subtree", "source": "hub", "target": "c", "path": "pkg"},
+            {"kind": "vendor", "source": "hub", "target": "c"},
+        ])
+        same, _skipped = taxontoy.property_violations(table, [
+            {"kind": "subtree", "source": "hub", "target": "c"},
+            {"kind": "vendor", "source": "hub", "target": "c"},
+        ])
+        different, _skipped = taxontoy.property_violations(table, [
+            {"kind": "subtree", "source": "hub", "target": "c"},
+            {"kind": "vendor", "source": "hub", "target": "other"},
+        ])
+        self.assertEqual(one_path, [])
+        self.assertEqual(len(same), 1)
+        self.assertEqual(same[0]["pair"], {"source": "hub", "target": "c"})
+        self.assertEqual(different, [])
+
+
+class RepoBranchTests(unittest.TestCase):
+    def test_short_circuits_and_the_other_side_of_each_guard(self):
+        self.assertEqual(taxontoy._profile_names(None), list(taxontoy.WAVES))
+        self.assertIsNone(taxontoy._norm_path(None))
+        self.assertIsNone(taxontoy._norm_path(1))
+        self.assertIsNone(taxontoy._norm_path("/"))
+        self.assertIsNone(taxontoy._github_repo("bad!/name"))
+        self.assertEqual(taxontoy.property_violations(None, [])[0], [])
+        self.assertEqual(taxontoy._double_distribution([{
+            "relations": ["subtree", "vendor"],
+            "pair": {"repository": "hub"},
+        }]), {"count": 1, "pairs": [{"repository": "hub"}]})
+        self.assertFalse(taxontoy._disjoint_hit({"source": " ", "target": "c"}, {"source": "p", "target": "c"}))
+        self.assertFalse(taxontoy._disjoint_hit({"source": "p", "target": ""}, {"source": "p", "target": "c"}))
+        self.assertFalse(taxontoy._disjoint_hit({"source": "a", "target": "c"}, {"source": "b", "target": "c"}))
+        self.assertEqual(
+            taxontoy._pair_record({"source": "a", "target": "b"}, {"source": "a", "target": "b"}),
+            {"source": "a", "target": "b"},
+        )
+        self.assertEqual(
+            taxontoy._pair_record(
+                {"source": "a", "path": "pkg", "target": "b"},
+                {"source": "c", "path": "pkg", "target": "d"},
+            ),
+            {"source": "a", "target": "b"},
+        )
+        self.assertEqual(
+            taxontoy._pair_record(
+                {"source": "a", "path": "pkg", "target": "b"},
+                {"source": "a", "target": "b"},
+            ),
+            {"source": "a", "target": "b"},
+        )
+        self.assertIsNone(taxontoy._child_repo("child", [{"hub": "other", "prefix": "child", "child": "x"}], "hub"))
+        self.assertEqual(
+            taxontoy._lock_holder(
+                {"repo": "other", "path": "vendor.lock.json"},
+                [{"hub": "hub", "prefix": "child", "child": "hub/child"}],
+            ),
+            "other",
+        )
+        self.assertEqual(
+            taxontoy._lock_holder(
+                {"repo": "hub", "path": "left/vendor/vendor.lock.json"},
+                [{"hub": "hub", "prefix": "left", "child": "hub/left"}],
+            ),
+            "hub/left",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "list.json").write_text("[]\n", encoding="utf-8")
+            with self.assertRaises(ValueError) as listed:
+                taxontoy._read_edge_graph(tmp / "list.json")
+            self.assertIn("edges array", str(listed.exception))
+            row = {
+                "path": "heads.json",
+                "repo": "hub",
+                "role": "heads",
+                "text": json.dumps({"heads": {
+                    "hub/body": [],
+                    "hub/slash": {"optional": {"subtree_prefix": "a/"}},
+                }}),
+            }
+            with self.assertRaises(ValueError) as body:
+                taxontoy._prefix_rows([row])
+            self.assertIn("each head must name a repository", str(body.exception))
+            row["text"] = json.dumps({"heads": {"hub/slash": {"optional": {"subtree_prefix": "a/"}}}})
+            with self.assertRaises(ValueError) as slash:
+                taxontoy._prefix_rows([row])
+            self.assertIn("one path segment", str(slash.exception))
+            lock = {"path": "vendor.lock.json", "repo": "hub", "role": "lock", "commit": _SHA_A, "text": "[]"}
+            with self.assertRaises(ValueError) as data:
+                taxontoy._lock_edges(lock, [])
+            self.assertIn("vendor-lock/1", str(data.exception))
+            for files, message in (
+                ([{"repository": "", "source": "lib.py", "destination": "vendor/lib.py"}], "repository"),
+                ([{"repository": "up/lib", "source": " ", "destination": "vendor/lib.py"}], "source"),
+                ([{"repository": "up/lib", "source": "lib.py", "destination": "vendor/lib.py", "commit": 1}], "commit"),
+            ):
+                lock["text"] = json.dumps({"schema": "vendor-lock/1", "files": files})
+                with self.assertRaises(ValueError) as exc:
+                    taxontoy._lock_edges(lock, [])
+                self.assertIn(message, str(exc.exception))
+            (tmp / "odd.py").write_text(
+                "value: int = 1\nitem.attr: int = 1\na = b = 1\nOTHER['x'] = ('y',)\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError) as missing:
+                taxontoy._siblings_table((tmp / "odd.py").read_text(encoding="utf-8"), "odd.py")
+            self.assertIn("not found", str(missing.exception))
+            with self.assertRaises(TypeError):
+                taxontoy._siblings_table(None, "odd.py")
+            with self.assertRaises(ValueError) as nested:
+                taxontoy._siblings_table("data[0]['x'] = 1\n", "odd.py")
+            self.assertIn("not found", str(nested.exception))
+            with self.assertRaises(ValueError):
+                taxontoy._literal(None, "odd.py")
+            records = [{"hub": "hub", "prefix": "left", "child": "hub/left", "row": {}}]
+            sibling = {
+                "path": "aoi.py", "repo": "hub", "role": "siblings", "commit": _SHA_A,
+                "text": "SIBLINGS = {'left': 'right'}\n",
+            }
+            with self.assertRaises(ValueError) as dirs:
+                taxontoy._consume_edges(sibling, records)
+            self.assertIn("list directories", str(dirs.exception))
+            pins = taxontoy._workflow_pins(
+                "\n".join([
+                    "      - uses: actions/checkout@" + _SHA_A,
+                    "        with:",
+                    "          - nested",
+                    "      - uses: actions/checkout@" + _SHA_A,
+                ])
+            )
+            self.assertEqual(pins, [("actions/checkout", _SHA_A), ("actions/checkout", _SHA_A)])
+            self.assertEqual(taxontoy._workflow_pins("- uses: actions/checkout@" + _SHA_B), [("actions/checkout", _SHA_B)])
+
+
+class RepoMutationTests(unittest.TestCase):
+    def test_repo_mutations_of_the_real_source_are_killed(self):
+        source = (ROOT / "taxontoy.py").read_text(encoding="utf-8")
+        mutations = [
+            (
+                'if item["hub"] == row["repo"] and (\n'
+                '            row["path"] == f"{item[\'prefix\']}/vendor.lock.json" or row["path"].startswith(item["prefix"] + "/")\n'
+                "        )",
+                'if item["hub"] == row["repo"] and row["path"] == "vendor.lock.json"',
+            ),
+            (
+                "return left == right or left.startswith(right + \"/\") or right.startswith(left + \"/\")",
+                "return left == right",
+            ),
+            (
+                "if sibling is None or sibling == child:\n                continue",
+                "if sibling is None:\n                continue",
+            ),
+            (
+                'key = (repo, pin, row["path"])\n        if key in seen:\n            continue\n        seen.add(key)',
+                'key = (repo, pin, row["path"])\n        if False:\n            continue\n        seen.add(key)',
+            ),
+            (
+                "        if key in seen:\n            continue\n        seen.add(key)\n        pairs.append(row)",
+                "        if key in seen:\n            pass\n        seen.add(key)\n        pairs.append(row)",
+            ),
+            (
+                r"""^\s*(?:-\s+)?uses:\s*['"]?([^\s'"]+?)@([0-9a-fA-F]{40})['"]?(?:\s|#|$)""",
+                r"""^\s*uses:\s*['"]?([^\s'"]+?)@([0-9a-fA-F]{40})['"]?(?:\s|#|$)""",
+            ),
+            (
+                "if not checkout:\n            continue",
+                "if False:\n            continue",
+            ),
+            (
+                'if key in seen or left_name == right_name:',
+                "if key in seen:",
+            ),
+            (
+                '"relations": list(key),',
+                '"relations": [left_name, right_name],',
+            ),
+            (
+                'if not manifest:\n                raise ValueError("pass --manifest or set TAXONTOY_MANIFEST")',
+                'if False:\n                raise ValueError("pass --manifest or set TAXONTOY_MANIFEST")',
+            ),
+            (
+                "if violations and args.strict:\n                return 2",
+                "if violations and False:\n                return 2",
+            ),
+            (
+                'ident = f"repository {pair[\'repository\']} path {pair[\'path\']}"',
+                'ident = "repository"',
+            ),
+            (
+                'if "prefix" in pair:\n                row["prefix"] = pair["prefix"]',
+                'if False:\n                row["prefix"] = pair["prefix"]',
+            ),
+            (
+                "if not full.is_relative_to(root) or not full.is_file():",
+                "if not full.is_file():",
+            ),
+            (
+                'if part == ".":\n            continue',
+                "if False:\n            continue",
+            ),
+            (
+                'if "path" in left or "path" in right:',
+                "if False:",
+            ),
+            (
+                "edges.sort(key=lambda edge: json.dumps(edge, ensure_ascii=False, sort_keys=True))",
+                "edges = list(edges)",
+            ),
+            (
+                'if repo is None:\n            continue',
+                "if False:\n            continue",
+            ),
+            (
+                'if item["relations"] != ["subtree", "vendor"]:\n            continue',
+                "if False:\n            continue",
+            ),
+            (
+                'lines.append(f"nodes {len(payload[\'nodes\'])}")',
+                'lines.append("nodes 0")',
+            ),
+            (
+                '"ok": True,\n                "provenance": built["provenance"],',
+                '"ok": False,\n                "provenance": built["provenance"],',
+            ),
+            (
+                "violations.sort(key=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))",
+                "violations = list(violations)",
+            ),
+            (
+                "pairs.sort(key=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))",
+                "pairs = list(pairs)",
+            ),
+            (
+                '    provenance.sort(key=lambda item: (item["repo"], item["path"], item["role"]))',
+                "    provenance = list(provenance)",
+            ),
+            (
+                "        if candidate.is_symlink():",
+                "        if False:",
+            ),
+            (
+                "    return _github_repo(value, exact=True) or value.casefold()",
+                "    return _github_repo(value) or value.casefold()",
+            ),
+            (
+                "        canon = _github_repo(repository, exact=True) if repository and ref else None",
+                "        canon = _github_repo(repository) if repository and ref else None",
+            ),
+            (
+                '    if "path" in left or "path" in right:',
+                '    if "path" in left and "path" in right:',
+            ),
+            (
+                '        and _repo_key(left.get("target")) == _repo_key(right.get("target"))',
+                '        and _repo_key(left.get("target")) != _repo_key(right.get("target"))',
+            ),
+        ]
+        manifest = ROOT / "fixtures" / "repos" / "manifest.json"
+        table = ROOT / "otl-relations.json"
+        graph = ROOT / "fixtures" / "repos" / "graph.json"
+        golden = _repo_snapshot(taxontoy, manifest, table, graph)
+        self.assertEqual(golden, _repo_snapshot(taxontoy, manifest, table, graph))
+        killed, survived = [], []
+        for old, new in mutations:
+            self.assertEqual(source.count(old), 1, old)
+            try:
+                module = _load_mutant(source.replace(old, new, 1))
+                found = _repo_snapshot(module, manifest, table, graph)
+            except Exception:
+                killed.append(old)
+                continue
+            if found != golden:
+                killed.append(old)
+            else:
+                survived.append(old)
+        sys.stderr.write(f"repo mutation killed={len(killed)} survived={len(survived)}\n")
+        self.assertEqual(survived, [], survived)
+
+
+def _repo_snapshot(module, manifest, table, graph):
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+
+    built, _inputs = module._graph_from_manifest(str(manifest))
+    edges = built["edges"]
+    synthetic = [
+        {"kind": "subtree", "source": "hub", "target": "child", "path": "pkg"},
+        {"kind": "vendor", "source": "hub", "target": "up", "path": "pkg/lib.py"},
+        {"kind": "vendor", "source": "hub", "target": "child"},
+        {"kind": "narrower", "source": "p", "target": "c"},
+        {"kind": "similarTo", "source": "p", "target": "c"},
+    ]
+    catalog = json.loads(Path(table).read_text(encoding="utf-8"))
+    one_way = json.loads(Path(table).read_text(encoding="utf-8"))
+    one_way["properties"]["relations"]["vendor"]["disjoint_with"] = [{
+        "relation": "subtree", "since": "2026-11-21", "reason": "one way",
+    }]
+    del one_way["properties"]["relations"]["subtree"]["disjoint_with"]
+    self_table = {"properties": {"relations": {"subtree": {"disjoint_with": [
+        {"relation": "subtree", "since": "2026-11-21", "reason": "self"},
+    ]}}}}
+    violations, skipped = module.property_violations(catalog, synthetic)
+    ordered, _skipped = module.property_violations(one_way, synthetic)
+    self_hits, _skipped = module.property_violations(self_table, synthetic)
+    with tempfile.TemporaryDirectory(prefix="taxontoy-repo-") as directory:
+        sample = Path(directory) / "sample.json"
+        sample.write_text(json.dumps({"edges": synthetic[:2]}), encoding="utf-8")
+        out = io.StringIO()
+        err = io.StringIO()
+        graph_out = io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = module.main([
+                "properties", str(table), "--graph", str(sample), "--format", "text", "--strict",
+            ])
+            try:
+                missing = module.main(["graph"])
+            except SystemExit as exc:
+                missing = exc.code if isinstance(exc.code, int) else 1
+        graph_text = io.StringIO()
+        with redirect_stdout(graph_out), redirect_stderr(io.StringIO()):
+            module.main(["graph", "--manifest", str(manifest), "--format", "json"])
+        with redirect_stdout(graph_text), redirect_stderr(io.StringIO()):
+            module.main(["graph", "--manifest", str(manifest), "--format", "text"])
+        text = out.getvalue().replace(str(directory), "TMP")
+        nodes_line = next(line for line in graph_text.getvalue().splitlines() if line.startswith("nodes "))
+    escape = "read"
+    with tempfile.TemporaryDirectory() as base_name:
+        base = Path(base_name)
+        outside = base / "outside"
+        outside.mkdir()
+        (outside / "heads.json").write_text('{"heads":{}}\n', encoding="utf-8")
+        mdir = base / "man"
+        mdir.mkdir()
+        (mdir / "sym_dir").symlink_to(outside, target_is_directory=True)
+        (mdir / "manifest.json").write_text(json.dumps({"sources": [{
+            "commit": "a" * 40, "file": "sym_dir/heads.json", "path": "child-heads.json",
+            "repo": "ext/hub", "role": "heads",
+        }]}), encoding="utf-8")
+        try:
+            module._graph_from_manifest(str(mdir / "manifest.json"))
+        except ValueError as exc:
+            escape = "stay" if "stay under" in str(exc) else str(exc)
+        (mdir / "real.json").write_text("{}\n", encoding="utf-8")
+        (mdir / "link.json").symlink_to("real.json")
+        (mdir / "manifest.json").write_text(json.dumps({"sources": [{
+            "commit": "a" * 40, "file": "link.json", "path": "child-heads.json",
+            "repo": "ext/hub", "role": "heads",
+        }]}), encoding="utf-8")
+        inside = "read"
+        try:
+            module._manifest_rows(str(mdir / "manifest.json"))
+        except ValueError as exc:
+            inside = "stay" if "stay under" in str(exc) else str(exc)
+    ordered_hits, _skipped = module.property_violations(
+        {"properties": {"relations": {"subtree": {"disjoint_with": [
+            {"relation": "vendor", "since": "2026-11-21", "reason": "pair"},
+        ]}}}},
+        [
+            {"kind": "subtree", "source": "hub", "target": "c", "path": "z"},
+            {"kind": "vendor", "source": "hub", "target": "u", "path": "z"},
+            {"kind": "subtree", "source": "hub", "target": "c", "path": "a"},
+            {"kind": "vendor", "source": "hub", "target": "u", "path": "a"},
+        ],
+    )
+    dotted, _skipped = module.property_violations(catalog, [
+        {"kind": "subtree", "source": "hub", "target": "c", "path": "./a/b"},
+        {"kind": "vendor", "source": "hub", "target": "c", "path": "a/b"},
+        {"kind": "subtree", "source": "hub", "target": "c", "path": "./a"},
+        {"kind": "vendor", "source": "hub", "target": "c", "path": "./b"},
+    ])
+    try:
+        local = module.build_repo_graph([{
+            "commit": "a" * 40,
+            "path": ".github/workflows/ci.yml",
+            "repo": "hub/app",
+            "role": "workflow",
+            "text": "      - uses: ./.github/workflows/local.yml@" + ("a" * 40) + "\n",
+        }])
+        local_edges = len(local["edges"])
+    except Exception as exc:
+        local_edges = type(exc).__name__
+    return {
+        "checkout_only": module._workflow_pins(
+            "- run: echo\n  repository: up/lib\n  ref: " + ("d" * 40) + "\n"
+            + "- uses: actions/checkout@" + ("b" * 40) + "\n  repository: up/lib\n  ref: " + ("c" * 40) + "\n"
+        ),
+        "code": code,
+        "counts": module._relation_counts(edges),
+        "escape": escape,
+        "hit_paths": [item["pair"]["path"] for item in ordered_hits],
+        "nodes_line": nodes_line,
+        "pair_paths": [
+            row["path"] for row in module._double_distribution(list(reversed(ordered_hits)))["pairs"]
+        ],
+        "diff_ends": len(module.property_violations(catalog, [
+            {"kind": "subtree", "source": "hub", "target": "c"},
+            {"kind": "vendor", "source": "hub", "target": "other"},
+        ])[0]),
+        "dotted": len(dotted),
+        "double": module._double_distribution(violations),
+        "extra": module._repo_key("up/lib/extra"),
+        "dup": module._double_distribution(violations + violations),
+        "graph_ok": json.loads(graph_out.getvalue())["ok"],
+        "holders": sorted({edge["source"] for edge in edges if edge["kind"] == "vendor"}),
+        "inside": inside,
+        "local": local_edges,
+        "missing": missing,
+        "one_path": len(module.property_violations(catalog, [
+            {"kind": "subtree", "source": "hub", "target": "c", "path": "pkg"},
+            {"kind": "vendor", "source": "hub", "target": "c"},
+        ])[0]),
+        "norm": module._norm_path("./a/b"),
+        "ordered": [item["relations"] for item in ordered],
+        "provenance": [
+            (item["repo"], item["path"])
+            for item in module.build_repo_graph([
+                {"commit": "a" * 40, "path": "z.yml", "repo": "z/repo", "role": "workflow", "text": ""},
+                {"commit": "a" * 40, "path": "a.yml", "repo": "a/repo", "role": "workflow", "text": ""},
+            ])["provenance"]
+        ],
+        "same_ends": len(module.property_violations(catalog, [
+            {"kind": "subtree", "source": "hub", "target": "c"},
+            {"kind": "vendor", "source": "hub", "target": "c"},
+        ])[0]),
+        "three": module._workflow_pins(
+            "- uses: actions/checkout@" + ("b" * 40) + "\n  repository: up/lib/extra\n  ref: " + ("c" * 40) + "\n"
+        ),
+        "other_double": module._double_distribution([{
+            "relations": ["narrower", "similarTo"],
+            "pair": {"path": "pkg", "repository": "hub"},
+        }])["count"],
+        "self": len(self_hits),
+        "skipped": skipped,
+        "sorted_edges": edges == sorted(
+            edges, key=lambda edge: json.dumps(edge, ensure_ascii=False, sort_keys=True),
+        ),
+        "stderr": err.getvalue(),
+        "text": text,
+        "violations": violations,
+    }
 
 
 class ZLineCoverageTests(unittest.TestCase):

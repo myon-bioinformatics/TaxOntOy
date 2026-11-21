@@ -1,0 +1,25 @@
+name: Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  deploy:
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-pages-static.yml@81f6aea6231d4490e581443fdeb43a09e6018ff0
+    with:
+      artifact_path: site
+      build: |
+        set -eu
+        python3 -m venv "$RUNNER_TEMP/otl-pages"
+        "$RUNNER_TEMP/otl-pages/bin/pip" install rdflib==7.6.0
+        "$RUNNER_TEMP/otl-pages/bin/python" scripts/atlas.py site/atlas --renderer-output site/shared/mermaid.js
+        python -S examples/sibling_format.py page examples/wave-profiles.json site/relations
+        python -S scripts/page_sizes.py
+        node --check site/third-design/app.js
+        node --check site/third-design/review-records.js
+        node --input-type=module --check < site/atlas/view.js
+        node --input-type=module --check < site/third-design/shared/scroll.js

@@ -14,6 +14,12 @@
     "judgment": "judgment-record",
     "holds true": "affirmation"
   },
+  "repos": {
+    "consumes": "dependency",
+    "subtree": "hierarchy",
+    "vendor": "dependency",
+    "workflow-pin": "dependency"
+  },
   "direction": {
     "candidate": "forward",
     "dependsOn": "forward",
@@ -22,7 +28,11 @@
     "judgment": "forward",
     "narrower": "forward",
     "similarTo": "mutual",
-    "to_model": "forward"
+    "subtree": "forward",
+    "to_model": "forward",
+    "vendor": "forward",
+    "workflow-pin": "forward",
+    "consumes": "forward"
   },
   "excluded": {
     "audit": [
@@ -53,7 +63,8 @@
       "hasName",
       "observes"
     ],
-    "cases": []
+    "cases": [],
+    "repos": []
   },
   "properties": {
     "classes": {
@@ -110,6 +121,24 @@
             "relation": "narrower",
             "since": "2026-11-15",
             "reason": "類似の端点は階層の端点と重ならない"
+          }
+        ]
+      },
+      "subtree": {
+        "disjoint_with": [
+          {
+            "relation": "vendor",
+            "since": "2026-11-21",
+            "reason": "同じリポジトリの同じパスを subtree と vendor の両方で配ると二重配布になる"
+          }
+        ]
+      },
+      "vendor": {
+        "disjoint_with": [
+          {
+            "relation": "subtree",
+            "since": "2026-11-21",
+            "reason": "同じリポジトリの同じパスを vendor と subtree の両方で配ると二重配布になる"
           }
         ]
       }

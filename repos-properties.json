@@ -1,0 +1,29 @@
+{
+  "command": "properties",
+  "counts": {
+    "consumes": 16,
+    "subtree": 6,
+    "vendor": 25,
+    "workflow-pin": 12
+  },
+  "double_distribution": {
+    "count": 0,
+    "pairs": []
+  },
+  "errors": [],
+  "inputs": [
+    {
+      "path": "fixtures/repos/graph.json",
+      "sha256": "3a510b3ad55deccf71602e72584959a1c408b9c55e0c16ff8989c49aad888d9d"
+    },
+    {
+      "path": "otl-relations.json",
+      "sha256": "4fab63b2160446b9a6da5990080832087a32c602775899ab34caae47705e5687"
+    }
+  ],
+  "ok": true,
+  "skipped": 0,
+  "tool": "taxontoy",
+  "version": "0.4.0",
+  "violations": []
+}

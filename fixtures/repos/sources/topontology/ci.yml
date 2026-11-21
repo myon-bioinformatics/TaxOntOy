@@ -1,0 +1,126 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python: ['3.11', '3.15']
+    env:
+      PYTHONPATH: ${{ github.workspace }}/ONTO
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # ONTO main, first-parent merge (Merge pull request #6).
+      # Parents: d94daca258fd98396111e47a30777d9aa8a13fd7 f220e31c2600e4a52f54f1477d46c0ffb9deace7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: myon-bioinformatics/ONTO
+          ref: 8ca1ee5dc8c2714ddcdea6db6774f7168c0e617b
+          path: ONTO
+          persist-credentials: false
+          fetch-depth: 1
+      # TaxOntOy main, first-parent merge (Merge pull request #4).
+      # Parents: 30c5ed689cb931bce3787e37056082ce8cb52b3d 8cfb0cab3a917ffe9b945fc0c6d4ee0e8edc7f04
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: myon-bioinformatics/TaxOntOy
+          ref: 8621f2261d694af0de35e103ad2387872ca10b99
+          path: TOO
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          version: "0.13.9"
+          python-version: ${{ matrix.python }}
+      - run: uv run --no-project python -S -m unittest discover -s tests -v
+      - name: Regenerated output matches the committed files
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/regen"
+          mkdir -p "$out"
+          uv run --no-project python -S topontology.py tests/fixtures/graph.json tests/fixtures/classes.json demo --format canonical > "$out/summary.json"
+          diff -u tests/expected/summary.json "$out/summary.json"
+          uv run --no-project python -S topontology.py tests/fixtures/graph.json tests/fixtures/classes.json demo --format mermaid --class hierarchy > "$out/hierarchy.mmd"
+          diff -u tests/expected/hierarchy.mmd "$out/hierarchy.mmd"
+          uv run --no-project python -S topontology.py tests/fixtures/graph.json tests/fixtures/classes.json demo --compare tests/fixtures/graph-extended.json --format canonical > "$out/compare.json"
+          diff -u tests/expected/compare.json "$out/compare.json"
+          uv run --no-project python -S topontology.py tests/fixtures/sigma-star.json tests/fixtures/sigma-classes.json demo --anomalies --format canonical > "$out/anomalies.json"
+          diff -u tests/expected/anomalies.json "$out/anomalies.json"
+          uv run --no-project python -S topontology.py tests/fixtures/graph.json tests/fixtures/classes.json demo --merge hierarchy --merge similarity --into linked --format canonical > "$out/boundary.json"
+          diff -u tests/expected/boundary.json "$out/boundary.json"
+          uv run --no-project python -S topontology.py series tests/fixtures/classes.json demo --snapshot one=tests/fixtures/series-one.json --snapshot two=tests/fixtures/series-two.json --snapshot three=tests/fixtures/series-three.json --format canonical > "$out/series.json"
+          diff -u tests/expected/series.json "$out/series.json"
+          uv run --no-project python -S topontology.py tests/fixtures/vendor-lock.json tests/fixtures/vendor-classes.json demo --graph-format vendor-lock --format canonical > "$out/vendor-lock.json"
+          diff -u tests/expected/vendor-lock.json "$out/vendor-lock.json"
+          uv run --no-project python -S topontology.py impact \
+            --lock myon-bioinformatics/Aoi=tests/fixtures/aoi-locks/aoi.json \
+            --lock myon-bioinformatics/BlueProbe=tests/fixtures/aoi-locks/blueprobe.json \
+            --lock myon-bioinformatics/DRAgoWing=tests/fixtures/aoi-locks/dragowing.json \
+            --lock myon-bioinformatics/NagoyAction=tests/fixtures/aoi-locks/nagoyaction.json \
+            --lock myon-bioinformatics/PythDRagoras=tests/fixtures/aoi-locks/pythdragoras.json \
+            --lock myon-bioinformatics/QueRyu=tests/fixtures/aoi-locks/queryu.json \
+            --lock myon-bioinformatics/SakAnalytics=tests/fixtures/aoi-locks/sakanalytics.json \
+            --format canonical > "$out/impact.json"
+          diff -u tests/expected/impact.json "$out/impact.json"
+      - name: Pinned TaxOntOy table classifies the fixture
+        run: |
+          set -euo pipefail
+          uv run --no-project python -S topontology.py tests/fixtures/graph.json "$GITHUB_WORKSPACE/TOO/otl-relations.json" concepts --format canonical > "$RUNNER_TEMP/too.json"
+          uv run --no-project python -S - "$RUNNER_TEMP/too.json" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+          report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          table = Path("TOO/otl-relations.json").read_bytes()
+          assert report["provenance"]["classification"]["sha256"] == hashlib.sha256(table).hexdigest()
+          assert report["tool"]["name"] == "topontology"
+          row = report["classes"]["hierarchy"]
+          assert row["weakly_connected_components"]["count"] == 1
+          assert row["independent_cycles"] == 1
+          assert row["independent_cycles"] == row["edges"] - row["incident_nodes"] + row["weakly_connected_components"]["count"]
+          assert report["classes"]["similarity"]["independent_cycles"] == 1
+          assert report["unclassified_edges"] == 1
+          PY
+          if uv run --no-project python -S topontology.py tests/fixtures/graph.json "$GITHUB_WORKSPACE/TOO/otl-relations.json" properties --format canonical > "$RUNNER_TEMP/properties.out" 2>"$RUNNER_TEMP/properties.err"; then
+            echo "properties was accepted as a profile" >&2
+            exit 1
+          fi
+          grep -q "unknown profile: properties" "$RUNNER_TEMP/properties.err"
+      - name: Coverage includes CLI subprocesses
+        run: |
+          set -euo pipefail
+          printf '%s\n' '[run]' 'branch = true' 'source = topontology,topology' 'parallel = true' 'relative_files = true' > "$RUNNER_TEMP/coveragerc.ini"
+          export COVERAGE_PROCESS_START="$RUNNER_TEMP/coveragerc.ini"
+          uv run --no-project --with coverage==7.13.1 python -m coverage run --rcfile "$COVERAGE_PROCESS_START" -m unittest discover -s tests -v
+          uv run --no-project --with coverage==7.13.1 python -m coverage combine --rcfile "$COVERAGE_PROCESS_START"
+          uv run --no-project --with coverage==7.13.1 python -m coverage json --rcfile "$COVERAGE_PROCESS_START" -o "$RUNNER_TEMP/coverage.json"
+          uv run --no-project --with coverage==7.13.1 python -S - "$RUNNER_TEMP/coverage.json" <<'PY'
+          import json
+          import sys
+          report = json.load(open(sys.argv[1], encoding="utf-8"))
+          def check(kind, executed, excluded, unexecuted, total):
+              print(f"{kind} executed={executed} excluded={excluded} unexecuted={unexecuted} total={total}")
+              if executed + excluded + unexecuted != total or unexecuted != 0:
+                  raise SystemExit(f"{kind} coverage gap")
+          sex = sexc = sun = stot = bex = bexc = bun = btot = 0
+          for info in report["files"].values():
+              summary = info["summary"]
+              sex += summary["covered_lines"]
+              sexc += summary["excluded_lines"]
+              sun += summary["missing_lines"]
+              stot += summary["num_statements"] + summary["excluded_lines"]
+              covered_branches = summary.get("covered_branches", summary["num_branches"] - summary["missing_branches"])
+              bex += covered_branches
+              bexc += summary.get("excluded_branches", 0)
+              bun += summary["missing_branches"]
+              btot += summary["num_branches"] + summary.get("excluded_branches", 0)
+          check("statements", sex, sexc, sun, stot)
+          check("branches", bex, bexc, bun, btot)
+          PY
