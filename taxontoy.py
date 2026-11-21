@@ -24,6 +24,9 @@ TOP_KEYS = {"schema", *WAVES, "direction", "excluded", "properties"}
 ALLOWED_KEYS = TOP_KEYS | {REPO_PROFILE}
 _SHA = re.compile(r"[0-9a-f]{40}")
 _OWNER = re.compile(r"[A-Za-z0-9_.-]+")
+_USES_RE = re.compile(
+    r"""^\s*(?:-\s+)?uses:\s*['"]?([^\s'"]+?)@([0-9a-fA-F]{40})['"]?(?:\s|#|$)"""
+)
 _ROLES = {"heads", "lock", "siblings", "workflow"}
 MAPPING = (
     {
@@ -727,12 +730,21 @@ def _loads(text, where):
 
 
 def _norm_path(value):
-    if not isinstance(value, str) or value != value.strip() or value.strip("/") == "":
+    """File identity. ``.`` segments drop out. ``..`` and an empty path are not an identity."""
+    if not isinstance(value, str) or value != value.strip():
         return None
-    parts = value.strip("/").split("/")
-    for part in parts:
-        if part in {"", ".", ".."}:
+    raw = value.strip("/")
+    if raw == "" or raw == ".":
+        return None
+    parts = []
+    for part in raw.split("/"):
+        if part in {"", ".."}:
             return None
+        if part == ".":
+            continue
+        parts.append(part)
+    if not parts:
+        return None
     return "/".join(parts)
 
 
@@ -748,7 +760,7 @@ def _manifest_rows(path):
     data = _load_json(path)
     if not isinstance(data, dict) or not isinstance(data.get("sources"), list) or not data["sources"]:
         raise ValueError("manifest must be an object with a non-empty sources array")
-    root = Path(path).parent
+    root = Path(path).resolve().parent
     rows = []
     for index, item in enumerate(data["sources"]):
         where = f"sources[{index}]"
@@ -764,9 +776,14 @@ def _manifest_rows(path):
         relative = Path(item["file"])
         if relative.is_absolute() or ".." in relative.parts:
             raise ValueError(f"{where}: file must stay under the manifest directory")
-        full = root / relative
-        if not full.is_file():
+        candidate = root / relative
+        if candidate.is_symlink():
+            raise ValueError(f"{where}: file must stay under the manifest directory")
+        if not candidate.exists():
             raise ValueError(f"{where}: file is missing")
+        full = candidate.resolve()
+        if not full.is_relative_to(root) or not full.is_file():
+            raise ValueError(f"{where}: file must stay under the manifest directory")
         rows.append({
             "commit": item["commit"],
             "full": full,
@@ -949,29 +966,46 @@ def _consume_edges(row, records):
     return edges
 
 
-def _github_repo(spec):
-    parts = spec.split("/")
-    if len(parts) < 2:
+def _github_repo(spec, *, exact=False):
+    """owner/name, compared without URL, ``.git``, or letter case.
+
+    ``exact`` keeps only a two-segment name. A workflow path may follow the name.
+    """
+    if not isinstance(spec, str):
+        return None
+    text = spec.strip().strip("'\"")
+    text = re.sub(r"^(?:https?://github\.com/|git@github\.com:)", "", text, flags=re.IGNORECASE)
+    if text.lower().endswith(".git"):
+        text = text[:-4]
+    parts = [part for part in text.strip("/").split("/") if part]
+    if len(parts) < 2 or (exact and len(parts) != 2):
         return None
     owner, name = parts[0], parts[1]
     if _OWNER.fullmatch(owner) is None or _OWNER.fullmatch(name) is None:
         return None
     if owner.startswith(".") or name.startswith("."):
         return None
-    return f"{owner}/{name}"
+    return f"{owner.casefold()}/{name.casefold()}"
+
+
+def _repo_key(value):
+    """Identity used when two edges name the same repository."""
+    if not _name_ok(value):
+        return None
+    return _github_repo(value, exact=True) or value.casefold()
 
 
 def _workflow_pins(text):
     found = []
     lines = text.splitlines()
     for line in lines:
-        match = re.match(r"^\s*(?:-\s+)?uses:\s*(\S+)@([0-9a-f]{40})\b", line)
+        match = _USES_RE.match(line)
         if match is None:
             continue
         repo = _github_repo(match.group(1))
         if repo is None:
             continue
-        found.append((repo, match.group(2)))
+        found.append((repo, match.group(2).lower()))
     index = 0
     while index < len(lines):
         step = re.match(r"^(\s*)-\s+\S", lines[index])
@@ -979,24 +1013,29 @@ def _workflow_pins(text):
             index += 1
             continue
         indent = len(step.group(1))
-        block = []
+        uses = _USES_RE.match(lines[index])
+        checkout = uses is not None and _github_repo(uses.group(1)) == "actions/checkout"
         index += 1
+        block = []
         while index < len(lines):
             nxt = re.match(r"^(\s*)-\s+\S", lines[index])
             if nxt and len(nxt.group(1)) <= indent:
                 break
             block.append(lines[index])
             index += 1
+        if not checkout:
+            continue
         repository = ref = None
         for line in block:
-            repo_match = re.match(r"^\s+repository:\s*(\S+)\s*$", line)
-            ref_match = re.match(r"^\s+ref:\s*([0-9a-f]{40})\b", line)
+            repo_match = re.match(r"""^\s+repository:\s*['"]?(\S+?)['"]?\s*$""", line)
+            ref_match = re.match(r"""^\s+ref:\s*['"]?([0-9a-fA-F]{40})\b""", line)
             if repo_match:
                 repository = repo_match.group(1)
             if ref_match:
                 ref = ref_match.group(1)
-        if repository and ref and _github_repo(repository) == repository:
-            found.append((repository, ref))
+        canon = _github_repo(repository, exact=True) if repository and ref else None
+        if canon is not None:
+            found.append((canon, ref.lower()))
     return found
 
 
@@ -1013,7 +1052,7 @@ def _pin_edges(row):
             "path": row["path"],
             "pin": pin,
             "provenance": _provenance(row),
-            "source": row["repo"],
+            "source": _repo_key(row["repo"]) or row["repo"],
             "target": repo,
         })
     return edges
@@ -1024,11 +1063,13 @@ def build_repo_graph(rows):
     records = _prefix_rows(rows)
     edges = _subtree_edges(records)
     for row in rows:
+        if row["role"] == "heads":
+            continue
         if row["role"] == "lock":
             edges.extend(_lock_edges(row, records))
         elif row["role"] == "siblings":
             edges.extend(_consume_edges(row, records))
-        elif row["role"] == "workflow":
+        else:
             edges.extend(_pin_edges(row))
     edges.sort(key=lambda edge: json.dumps(edge, ensure_ascii=False, sort_keys=True))
     names = sorted({edge["source"] for edge in edges} | {edge["target"] for edge in edges})
@@ -1063,24 +1104,28 @@ def _holder_path(edge):
     if "path" not in edge:
         return None
     path = _norm_path(edge.get("path"))
-    source = edge.get("source")
-    if _name_ok(source) and path is not None:
+    source = _repo_key(edge.get("source"))
+    if source is not None and path is not None:
         return source, path
     return None
 
 
 def _disjoint_hit(left, right):
-    held_left = _holder_path(left)
-    held_right = _holder_path(right)
-    if held_left is not None and held_right is not None:
+    """Same file identity, or the same endpoints when neither edge names a path.
+
+    A path that cannot be normalized does not fall back to the endpoints.
+    """
+    if "path" in left or "path" in right:
+        held_left = _holder_path(left)
+        held_right = _holder_path(right)
+        if held_left is None or held_right is None:
+            return False
         return held_left[0] == held_right[0] and _paths_overlap(held_left[1], held_right[1])
-    if held_left is not None or held_right is not None:
-        return False
     return (
-        _name_ok(left.get("source"))
-        and _name_ok(left.get("target"))
-        and left.get("source") == right.get("source")
-        and left.get("target") == right.get("target")
+        _repo_key(left.get("source")) is not None
+        and _repo_key(left.get("target")) is not None
+        and _repo_key(left.get("source")) == _repo_key(right.get("source"))
+        and _repo_key(left.get("target")) == _repo_key(right.get("target"))
     )
 
 
@@ -1143,23 +1188,29 @@ def property_violations(table, edges):
 
 
 def _double_distribution(violations):
+    """Every subtree/vendor violation. A pathless hit is still one pair."""
     pairs = []
     seen = set()
     for item in violations:
         if item["relations"] != ["subtree", "vendor"]:
             continue
         pair = item["pair"]
-        if "repository" not in pair or "path" not in pair:
-            continue
-        key = (pair["repository"], pair["path"])
+        if "repository" in pair and "path" in pair:
+            key = ("path", pair["repository"], pair["path"])
+            row = {"path": pair["path"], "repository": pair["repository"]}
+            if "prefix" in pair:
+                row["prefix"] = pair["prefix"]
+        elif "source" in pair or "target" in pair:
+            key = ("ends", pair.get("source"), pair.get("target"))
+            row = {"source": pair.get("source"), "target": pair.get("target")}
+        else:
+            key = ("repository", pair.get("repository"))
+            row = {"repository": pair.get("repository")}
         if key in seen:
             continue
         seen.add(key)
-        row = {"path": pair["path"], "repository": pair["repository"]}
-        if "prefix" in pair:
-            row["prefix"] = pair["prefix"]
         pairs.append(row)
-    pairs.sort(key=lambda item: (item["repository"], item["path"]))
+    pairs.sort(key=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))
     return {"count": len(pairs), "pairs": pairs}
 
 

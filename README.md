@@ -28,7 +28,11 @@
 | `pins` | `workflow-pin` | workflow の `uses: owner/repo@SHA` と、checkout の `repository` と `ref`。fleet の kind は `workflow-pin` |
 | `consumes` | `consumes` | `aoi.py` の `SIBLINGS`。子が別の subtree ディレクトリを import します。fleet の `shared-tools` は別の consumer 記録です |
 
-`source` はパスを持つリポジトリ、`target` は相手です。`subtree` は親から子で、`path` は prefix です。`vendor` はコピーを持つリポジトリから上流で、`path` は destination です。`prefix/vendor.lock.json` は親ではなく、その prefix の子のロックです。`workflow-pin` は workflow のあるリポジトリから固定先で、`path` は workflow ファイル、`pin` は SHA です。`consumes` は子から import 先で、配布パスは付けません。
+`source` はパスを持つリポジトリ、`target` は相手です。リポジトリ名は `owner/name` に揃え、`https://github.com/` と `git@github.com:` と末尾の `.git` を外し、大文字小文字を区別しません。`subtree` は親から子で、`path` は prefix です。`vendor` はコピーを持つリポジトリから上流で、`path` は destination です。`prefix/vendor.lock.json` は親ではなく、その prefix の子のロックです。`workflow-pin` は workflow のあるリポジトリから固定先で、`path` は workflow ファイル、`pin` は小文字の SHA です。`uses:` の引用符と大文字の SHA を受けます。`repository` と `ref` は `actions/checkout` のステップから取ります。`consumes` は子から import 先で、配布パスは付けません。
+
+パスの `.` は捨てます。`..` や空のパスはファイルの同一性になりません。`path` がある辺は、正規化できないときに端点だけの比較へは倒れません。`subtree` と `vendor` の違反は、パスが無くても `double_distribution` の件数に入ります。
+
+`taxontoy graph --manifest` が読むファイルは、解決したあともマニフェストのディレクトリの中にあります。ディレクトリの外へ出るシンボリックリンクは失敗です。
 
 `subtree` と `vendor` は `disjoint_with` です。`source` が同じで `path` が一致する、または一方が他方のディレクトリ接頭辞であるとき、同じファイルとリポジトリの組を二通りに配っています。`taxontoy properties` は違反と、その辺を報告します。違反が無いときの終了コードは 0、あるときは 1、`--strict` のときは 2 です。
 

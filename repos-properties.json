@@ -14,7 +14,7 @@
   "inputs": [
     {
       "path": "fixtures/repos/graph.json",
-      "sha256": "d914e002bdcf03fdac8f425bfefd38d479fd18a8899560c56c0aab36014b75b6"
+      "sha256": "04f5500fb3628ed53253e0b66bfd9073728b74bf322550f0376015f33fd05685"
     },
     {
       "path": "otl-relations.json",

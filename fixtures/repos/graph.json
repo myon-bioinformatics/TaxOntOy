@@ -577,7 +577,7 @@
         "path": ".github/workflows/ci.yml",
         "repo": "myon-bioinformatics/TopOntoLogy"
       },
-      "source": "myon-bioinformatics/TopOntoLogy",
+      "source": "myon-bioinformatics/topontology",
       "target": "astral-sh/setup-uv"
     },
     {
@@ -589,7 +589,7 @@
         "path": ".github/workflows/ci.yml",
         "repo": "myon-bioinformatics/OnTautoLogy"
       },
-      "source": "myon-bioinformatics/OnTautoLogy",
+      "source": "myon-bioinformatics/ontautology",
       "target": "actions/checkout"
     },
     {
@@ -601,7 +601,7 @@
         "path": ".github/workflows/ci.yml",
         "repo": "myon-bioinformatics/TopOntoLogy"
       },
-      "source": "myon-bioinformatics/TopOntoLogy",
+      "source": "myon-bioinformatics/topontology",
       "target": "actions/checkout"
     },
     {
@@ -613,7 +613,7 @@
         "path": ".github/workflows/ci.yml",
         "repo": "myon-bioinformatics/OnTautoLogy"
       },
-      "source": "myon-bioinformatics/OnTautoLogy",
+      "source": "myon-bioinformatics/ontautology",
       "target": "astral-sh/setup-uv"
     },
     {
@@ -625,8 +625,8 @@
         "path": ".github/workflows/ci.yml",
         "repo": "myon-bioinformatics/TopOntoLogy"
       },
-      "source": "myon-bioinformatics/TopOntoLogy",
-      "target": "myon-bioinformatics/TaxOntOy"
+      "source": "myon-bioinformatics/topontology",
+      "target": "myon-bioinformatics/taxontoy"
     },
     {
       "kind": "workflow-pin",
@@ -637,8 +637,8 @@
         "path": ".github/workflows/ci.yml",
         "repo": "myon-bioinformatics/TopOntoLogy"
       },
-      "source": "myon-bioinformatics/TopOntoLogy",
-      "target": "myon-bioinformatics/ONTO"
+      "source": "myon-bioinformatics/topontology",
+      "target": "myon-bioinformatics/onto"
     },
     {
       "kind": "workflow-pin",
@@ -649,7 +649,7 @@
         "path": ".github/workflows/ci.yml",
         "repo": "myon-bioinformatics/OnTautoLogy"
       },
-      "source": "myon-bioinformatics/OnTautoLogy",
+      "source": "myon-bioinformatics/ontautology",
       "target": "actions/setup-node"
     },
     {
@@ -661,7 +661,7 @@
         "path": ".github/workflows/ci.yml",
         "repo": "myon-bioinformatics/OnTautoLogy"
       },
-      "source": "myon-bioinformatics/OnTautoLogy",
+      "source": "myon-bioinformatics/ontautology",
       "target": "actions/upload-artifact"
     },
     {
@@ -673,7 +673,7 @@
         "path": ".github/workflows/pages.yml",
         "repo": "myon-bioinformatics/OnTautoLogy"
       },
-      "source": "myon-bioinformatics/OnTautoLogy",
+      "source": "myon-bioinformatics/ontautology",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -685,7 +685,7 @@
         "path": ".github/workflows/wave-relations.yml",
         "repo": "myon-bioinformatics/OnTautoLogy"
       },
-      "source": "myon-bioinformatics/OnTautoLogy",
+      "source": "myon-bioinformatics/ontautology",
       "target": "actions/checkout"
     },
     {
@@ -697,8 +697,8 @@
         "path": ".github/workflows/wave-relations.yml",
         "repo": "myon-bioinformatics/OnTautoLogy"
       },
-      "source": "myon-bioinformatics/OnTautoLogy",
-      "target": "myon-bioinformatics/TaxOntOy"
+      "source": "myon-bioinformatics/ontautology",
+      "target": "myon-bioinformatics/taxontoy"
     },
     {
       "kind": "workflow-pin",
@@ -709,67 +709,67 @@
         "path": ".github/workflows/wave-relations.yml",
         "repo": "myon-bioinformatics/OnTautoLogy"
       },
-      "source": "myon-bioinformatics/OnTautoLogy",
-      "target": "myon-bioinformatics/TopOntoLogy"
+      "source": "myon-bioinformatics/ontautology",
+      "target": "myon-bioinformatics/topontology"
     }
   ],
   "errors": [],
   "inputs": [
     {
-      "path": "fixtures/repos/manifest.json",
-      "sha256": "ea28d952c01992d1572d170b8f50abef0590edf2d21853c48cf4053d5957d41b"
-    },
-    {
-      "path": "fixtures/repos/sources/aoi/aoi.py",
+      "path": "/agent/repos/TaxOntOy/fixtures/repos/sources/aoi/aoi.py",
       "sha256": "57e55f6fc10ff782706877eef72f19c363ca6e694eabc5b668d1409f67f26cbc"
     },
     {
-      "path": "fixtures/repos/sources/aoi/blueprobe-vendor.lock.json",
+      "path": "/agent/repos/TaxOntOy/fixtures/repos/sources/aoi/blueprobe-vendor.lock.json",
       "sha256": "353adacb36fa94060c6699267a45991105dceebe76780ceda2811724d7f0763d"
     },
     {
-      "path": "fixtures/repos/sources/aoi/child-heads.json",
+      "path": "/agent/repos/TaxOntOy/fixtures/repos/sources/aoi/child-heads.json",
       "sha256": "247c1d921b5df8f2bc5f19b0c77d301ee7a40e6fa90635270a9f449efaea1bf1"
     },
     {
-      "path": "fixtures/repos/sources/aoi/dragowing-vendor.lock.json",
+      "path": "/agent/repos/TaxOntOy/fixtures/repos/sources/aoi/dragowing-vendor.lock.json",
       "sha256": "afefef58127e6e146bb5cd4c7b0ed529248f6af0ee4b6fd6c67896d2bb75c90a"
     },
     {
-      "path": "fixtures/repos/sources/aoi/nagoyaction-vendor.lock.json",
+      "path": "/agent/repos/TaxOntOy/fixtures/repos/sources/aoi/nagoyaction-vendor.lock.json",
       "sha256": "36605e236dc8af5bdf25a1ee0ac8e3794b9919eb22f861c640b436f747b11d06"
     },
     {
-      "path": "fixtures/repos/sources/aoi/pythdragoras-vendor.lock.json",
+      "path": "/agent/repos/TaxOntOy/fixtures/repos/sources/aoi/pythdragoras-vendor.lock.json",
       "sha256": "555f22fdf0b6f0db9f1766ea98f9cdbfc331b590cb0c81177e2055d7215b0e7a"
     },
     {
-      "path": "fixtures/repos/sources/aoi/queryu-vendor.lock.json",
+      "path": "/agent/repos/TaxOntOy/fixtures/repos/sources/aoi/queryu-vendor.lock.json",
       "sha256": "100b2b610fc78d79f8ad44f7c70c729f8e6862b01f8b42ddbbc691531a87a9c5"
     },
     {
-      "path": "fixtures/repos/sources/aoi/sakanalytics-vendor.lock.json",
+      "path": "/agent/repos/TaxOntOy/fixtures/repos/sources/aoi/sakanalytics-vendor.lock.json",
       "sha256": "555f22fdf0b6f0db9f1766ea98f9cdbfc331b590cb0c81177e2055d7215b0e7a"
     },
     {
-      "path": "fixtures/repos/sources/aoi/vendor.lock.json",
+      "path": "/agent/repos/TaxOntOy/fixtures/repos/sources/aoi/vendor.lock.json",
       "sha256": "e95ef04646ac02f8aed4760cbdee37d2542ec31c1234bcc98983ca103ae7157d"
     },
     {
-      "path": "fixtures/repos/sources/ontautology/ci.yml",
+      "path": "/agent/repos/TaxOntOy/fixtures/repos/sources/ontautology/ci.yml",
       "sha256": "dfe57842c4e74c8af9f25aeb85e3fbe1b7f9912a445a48719c6ce2e09d551f50"
     },
     {
-      "path": "fixtures/repos/sources/ontautology/pages.yml",
+      "path": "/agent/repos/TaxOntOy/fixtures/repos/sources/ontautology/pages.yml",
       "sha256": "94078163f1e08c4271f7a4232a3a99202331fb56b8599a1a0827c55aaeafcb09"
     },
     {
-      "path": "fixtures/repos/sources/ontautology/wave-relations.yml",
+      "path": "/agent/repos/TaxOntOy/fixtures/repos/sources/ontautology/wave-relations.yml",
       "sha256": "1f05e8c126a151840835630a5d283f8597d80cb9f507002a6f903db3be06b52f"
     },
     {
-      "path": "fixtures/repos/sources/topontology/ci.yml",
+      "path": "/agent/repos/TaxOntOy/fixtures/repos/sources/topontology/ci.yml",
       "sha256": "f7c266612829d3c254c649149e3a60589561d6d520b1f235bfa8eec7484a2b87"
+    },
+    {
+      "path": "fixtures/repos/manifest.json",
+      "sha256": "ea28d952c01992d1572d170b8f50abef0590edf2d21853c48cf4053d5957d41b"
     }
   ],
   "mapping": [
@@ -828,14 +828,6 @@
       "type": "repository"
     },
     {
-      "id": "myon-bioinformatics/ONTO",
-      "type": "repository"
-    },
-    {
-      "id": "myon-bioinformatics/OnTautoLogy",
-      "type": "repository"
-    },
-    {
       "id": "myon-bioinformatics/PythDRagoras",
       "type": "repository"
     },
@@ -848,19 +840,27 @@
       "type": "repository"
     },
     {
-      "id": "myon-bioinformatics/TaxOntOy",
-      "type": "repository"
-    },
-    {
-      "id": "myon-bioinformatics/TopOntoLogy",
-      "type": "repository"
-    },
-    {
       "id": "myon-bioinformatics/markdown",
       "type": "repository"
     },
     {
       "id": "myon-bioinformatics/myon-bioinformatics",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/ontautology",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/onto",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/taxontoy",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/topontology",
       "type": "repository"
     }
   ],
