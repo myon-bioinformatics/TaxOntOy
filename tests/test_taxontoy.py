@@ -67,7 +67,7 @@ def write_json(directory, name, payload):
 
 def minimal_table():
     return {
-        "schema": taxontoy.SCHEMA_ID,
+        "schema": taxontoy.SCHEMA_V2,
         "audit": {"dependsOn": "dependency", "duplicates": "overlap"},
         "concepts": {"narrower": "hierarchy", "similarTo": "similarity"},
         "cases": {
@@ -130,13 +130,23 @@ class CheckedInTableTests(unittest.TestCase):
         self.assertEqual(sorted(set(concepts.values())), ["hierarchy", "similarity"])
         self.assertNotIn("holds false", data["cases"])
         self.assertNotIn("depends_on", data["audit"])
-        self.assertIn("depends_on", data["excluded"]["audit"])
-        self.assertIn("overlapsWith", data["excluded"]["audit"])
+        excluded = {item["relation"]: item for item in data["excluded"]["audit"]}
+        self.assertEqual(excluded["depends_on"]["kind"], "alias")
+        self.assertEqual(excluded["depends_on"]["alias_of"], "dependsOn")
+        self.assertEqual(excluded["overlapsWith"]["kind"], "alias")
+        self.assertEqual(excluded["overlapsWith"]["alias_of"], "duplicates")
+        self.assertEqual(excluded["belongsTo"]["kind"], "out_of_scope")
+        self.assertNotIn("alias_of", excluded["belongsTo"])
         self.assertIn("negation", taxontoy.CLASS_DIRECTION)
         self.assertEqual(data["repos"]["subtree"], "hierarchy")
         self.assertEqual(data["repos"]["vendor"], "dependency")
-        self.assertEqual(data["schema"], "taxontoy-relations/2")
+        self.assertEqual(data["schema"], "taxontoy-relations/3")
         self.assertEqual(data["excluded"]["repos"], [])
+        self.assertEqual(
+            data["properties"]["relations"]["belongsTo"]["domain"]["types"],
+            ["ActionsRun", "Branch", "Commit", "File", "PullRequest"],
+        )
+        self.assertEqual(data["properties"]["relations"]["belongsTo"]["range"]["types"], ["Repository"])
 
     def test_repos_profile_is_optional_on_a_version_2_table(self):
         data = json.loads(TABLE.read_text(encoding="utf-8"))
@@ -350,6 +360,33 @@ class CommittedReportTests(unittest.TestCase):
             self.assertEqual(part["stale"], 0)
             self.assertEqual(body["class_edges"], expected)
             self.assertTrue(all(item["folded"] is False for item in body["alias_candidates"]))
+            weight = body["edge_weight"]
+            ratio = weight["classified_ratio"]
+            self.assertEqual(ratio["numerator"], weight["classified"])
+            self.assertEqual(ratio["denominator"], weight["total"])
+            self.assertEqual(
+                weight["classified"] + weight["excluded"] + weight["unclassified"],
+                weight["total"],
+            )
+        self.assertEqual(payload["waves"]["audit"]["edge_weight"]["classified"], 38)
+        self.assertEqual(payload["waves"]["audit"]["edge_weight"]["excluded"], 2304)
+        self.assertEqual(payload["waves"]["audit"]["edge_weight"]["total"], 2342)
+        self.assertEqual(payload["waves"]["concepts"]["edge_weight"]["classified"], 91)
+        self.assertEqual(payload["waves"]["concepts"]["edge_weight"]["total"], 826)
+        self.assertEqual(payload["waves"]["cases"]["edge_weight"], {
+            "classified": 10,
+            "classified_ratio": {"denominator": 10, "numerator": 10},
+            "excluded": 0,
+            "total": 10,
+            "unclassified": 0,
+        })
+        belongs = payload["waves"]["audit"]["types"]["relations"]["belongsTo"]
+        self.assertEqual(belongs["declared"]["range"], ["Repository"])
+        self.assertEqual(
+            [(row["source"], row["edges"]) for row in belongs["actual"]],
+            [("ActionsRun", 93), ("Branch", 9), ("Commit", 32), ("File", 542), ("PullRequest", 15)],
+        )
+        self.assertEqual(belongs["gap"], {"actual_only": [], "declared_only": []})
         candidates = payload["waves"]["audit"]["alias_candidates"]
         self.assertIn(
             {"detection": "separator", "folded": False, "relations": ["dependsOn", "depends_on"]},
@@ -375,10 +412,22 @@ class CommittedReportTests(unittest.TestCase):
         )
         audit = payload["waves"]["audit"]["candidates"]
         self.assertIn({
-            "declared": False,
+            "declared": True,
             "detection": "separator",
             "folded": False,
             "relations": ["dependsOn", "depends_on"],
+        }, audit)
+        self.assertIn({
+            "declared": True,
+            "detection": "same-pairs",
+            "folded": False,
+            "relations": ["dependsOn", "depends_on"],
+        }, audit)
+        self.assertIn({
+            "declared": True,
+            "detection": "same-pairs",
+            "folded": False,
+            "relations": ["duplicates", "overlapsWith"],
         }, audit)
         self.assertIn({
             "declared": True,
@@ -420,7 +469,7 @@ class ValidateErrorTests(unittest.TestCase):
 
         schema = minimal_table()
         schema["schema"] = "taxontoy-relations/0"
-        cases.append((schema, [f"schema: expected {taxontoy.SCHEMA_ID}"]))
+        cases.append((schema, [f"schema: expected {taxontoy.SCHEMA_V2} or {taxontoy.SCHEMA_ID}"]))
 
         not_object = minimal_table()
         not_object["audit"] = []
@@ -1950,6 +1999,12 @@ class RepoRelationTests(unittest.TestCase):
             graph_path.read_text(encoding="utf-8"),
             json.dumps(graph, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         )
+        self.assertEqual(graph["version"], taxontoy.__version__)
+        graph_sha = hashlib.sha256(graph_path.read_bytes()).hexdigest()
+        recorded = next(
+            item["sha256"] for item in report["inputs"] if item["path"] == "fixtures/repos/graph.json"
+        )
+        self.assertEqual(recorded, graph_sha)
         self.assertEqual(
             report_path.read_text(encoding="utf-8"),
             json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -2022,6 +2077,17 @@ class RepoRelationTests(unittest.TestCase):
         ])
         self.assertEqual(checked.returncode, 0, checked.stderr + checked.stdout)
         self.assertIn("double_distribution 0", checked.stdout)
+        checked_json = run([
+            "properties", "otl-relations.json", "--graph", "fixtures/repos/graph.json", "--format", "json",
+        ])
+        self.assertEqual(checked_json.returncode, 0, checked_json.stderr + checked_json.stdout)
+        live = json.loads(checked_json.stdout)
+        live_sha = next(
+            item["sha256"] for item in live["inputs"] if item["path"] == "fixtures/repos/graph.json"
+        )
+        self.assertEqual(live["version"], taxontoy.__version__)
+        self.assertEqual(live_sha, graph_sha)
+        self.assertEqual(live_sha, recorded)
         graph_text = run(["graph", "--manifest", "fixtures/repos/manifest.json", "--format", "text"])
         self.assertEqual(graph_text.returncode, 0, graph_text.stderr)
         self.assertTrue(json.loads(rebuilt.stdout)["ok"])
@@ -3091,6 +3157,951 @@ def _repo_snapshot(module, manifest, table, graph):
         "text": text,
         "violations": violations,
     }
+
+
+def _exclusion(relation, kind="out_of_scope", alias_of=None, since="2026-11-21", reason="recorded"):
+    row = {"relation": relation, "kind": kind, "since": since, "reason": reason}
+    if alias_of is not None:
+        row["alias_of"] = alias_of
+    return row
+
+
+def _v3_table():
+    table = minimal_table()
+    table["schema"] = taxontoy.SCHEMA_ID
+    table["excluded"] = {
+        "audit": [
+            _exclusion("belongsTo"),
+            _exclusion("blocks"),
+            _exclusion("depends_on", "alias", "dependsOn"),
+            _exclusion("observes"),
+            _exclusion("overlapsWith", "alias", "duplicates"),
+        ],
+        "concepts": [_exclusion("hasName")],
+        "cases": [],
+    }
+    table["properties"]["relations"]["belongsTo"] = {
+        "domain": {"types": ["File", "PullRequest"], "since": "2026-11-21", "reason": "sources seen"},
+        "range": {"types": ["Repository"], "since": "2026-11-21", "reason": "one target"},
+    }
+    return table
+
+
+def _sha(char):
+    return char * 40
+
+
+class RelationV3Tests(unittest.TestCase):
+    def test_version_2_commands_keep_their_shape(self):
+        table = minimal_table()
+        self.assertEqual(table["schema"], taxontoy.SCHEMA_V2)
+        self.assertEqual(taxontoy.validate_document(table), [])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_json(tmp, "table.json", table)
+            checked = run(["validate", str(path), "--format", "json"])
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+        payload = json.loads(checked.stdout)
+        self.assertEqual(payload["excluded"]["audit"], ["blocks", "depends_on", "observes", "overlapsWith"])
+        graphs = {wave: body["edges"] for wave, body in fixture_graphs().items()}
+        waves, errors = taxontoy.cover_waves(table, graphs, taxontoy._load_knowledgegraph(ONTO))
+        self.assertEqual(errors, [])
+        for body in waves.values():
+            self.assertNotIn("edge_weight", body)
+            self.assertNotIn("types", body)
+        found, _notes = taxontoy.property_candidates(table, {"dependsOn": [{"source": "a", "target": "b"}], "depends_on": [{"source": "a", "target": "b"}]}, {})
+        separator = next(item for item in found if item["detection"] == "separator")
+        self.assertFalse(separator["declared"])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_json(tmp, "table.json", table)
+            text = run(["validate", str(path), "--format", "text"])
+        self.assertEqual(text.returncode, 0, text.stderr)
+        self.assertIn("excluded audit depends_on", text.stdout)
+        self.assertNotIn("alias_of", text.stdout)
+
+    def test_version_2_table_still_reads_after_the_checked_in_table_moved_to_v3(self):
+        data = json.loads(TABLE.read_text(encoding="utf-8"))
+        data["schema"] = taxontoy.SCHEMA_V2
+        for wave, entries in list(data["excluded"].items()):
+            data["excluded"][wave] = [item["relation"] for item in entries] if entries and isinstance(entries[0], dict) else list(entries)
+        data["properties"]["relations"].pop("belongsTo")
+        self.assertEqual(taxontoy.validate_document(data), [])
+        ranked = taxontoy.rank_unclassified(data, [
+            {"relation": "depends_on", "source": "a", "target": "b"},
+            {"relation": "dependsOn", "source": "a", "target": "b"},
+        ], "audit")
+        self.assertEqual(ranked["ranking"][0]["relation"], "depends_on")
+        self.assertEqual(ranked["ranking"][0]["status"], "excluded")
+
+    def test_exclusion_objects_require_kind_reason_and_alias_target(self):
+        def errors_of(entries):
+            table = _v3_table()
+            table["excluded"]["audit"] = entries
+            return taxontoy.validate_document(table)
+
+        self.assertEqual(taxontoy.validate_document(_v3_table()), [])
+        self.assertIn("excluded.audit[0]: must be an object", errors_of(["belongsTo"]))
+        self.assertIn("excluded.audit[0]: unknown field note", errors_of([
+            {**_exclusion("belongsTo"), "note": "no"},
+        ]))
+        self.assertIn("excluded.audit[0]: missing relation", errors_of([_exclusion("  ")]))
+        self.assertIn("audit: dependsOn is both classified and excluded", errors_of([
+            _exclusion("dependsOn"),
+        ]))
+        self.assertIn("excluded.audit[0]: kind must be out_of_scope or alias", errors_of([
+            _exclusion("belongsTo", kind="inverse"),
+        ]))
+        self.assertIn("excluded.audit[0]: missing since", errors_of([
+            {"relation": "belongsTo", "kind": "out_of_scope", "reason": "why"},
+        ]))
+        self.assertIn("excluded.audit[0]: invalid since", errors_of([
+            _exclusion("belongsTo", since="2026-02-31"),
+        ]))
+        self.assertIn("excluded.audit[0]: missing reason", errors_of([
+            _exclusion("belongsTo", reason="  "),
+        ]))
+        self.assertIn("excluded.audit[0]: missing alias_of", errors_of([
+            _exclusion("depends_on", "alias"),
+        ]))
+        self.assertIn("excluded.audit[0]: alias_of itself", errors_of([
+            _exclusion("depends_on", "alias", "depends_on"),
+        ]))
+        self.assertIn("excluded.audit[0]: alias_of unknown relation ghost", errors_of([
+            _exclusion("depends_on", "alias", "ghost"),
+        ]))
+        self.assertIn("excluded.audit[0]: alias_of is classified in concepts", errors_of([
+            _exclusion("depends_on", "alias", "narrower"),
+        ]))
+        self.assertIn("excluded.audit[0]: alias_of is only for alias", errors_of([
+            {**_exclusion("belongsTo"), "alias_of": "dependsOn"},
+        ]))
+        self.assertIn("excluded.audit: must be sorted and unique", errors_of([
+            _exclusion("depends_on", "alias", "dependsOn"),
+            _exclusion("belongsTo"),
+        ]))
+        self.assertIn("excluded.audit: must be sorted and unique", errors_of([
+            _exclusion("belongsTo"),
+            _exclusion("belongsTo"),
+        ]))
+        mixed = minimal_table()
+        mixed["excluded"]["audit"] = ["blocks", {"relation": "depends_on"}]
+        self.assertIn("excluded.audit: must be sorted and unique", taxontoy.validate_document(mixed))
+        self.assertIn("excluded.audit: names must be non-empty strings", taxontoy.validate_document(mixed))
+
+    def test_edge_weight_is_classified_edges_over_every_edge(self):
+        table = _v3_table()
+        graphs = {wave: list(body["edges"]) for wave, body in fixture_graphs().items()}
+        graphs["audit"].append("not-an-edge")
+        waves, errors = taxontoy.cover_waves(table, graphs, taxontoy._load_knowledgegraph(ONTO), {})
+        self.assertTrue(any(error.startswith("malformed audit:") for error in errors))
+        weight = waves["audit"]["edge_weight"]
+        self.assertEqual(weight["classified"], 2)
+        self.assertEqual(weight["excluded"], 4)
+        self.assertEqual(weight["unclassified"], 0)
+        self.assertEqual(weight["total"], 7)
+        self.assertEqual(weight["classified_ratio"], {"denominator": 7, "numerator": 2})
+        self.assertNotIn("types", waves["concepts"])
+        skipped = taxontoy._type_gaps(table, {}, {}, table["concepts"], set(), set())
+        self.assertIsNone(skipped)
+
+    def test_domain_and_range_are_optional_and_checked(self):
+        def type_errors(body):
+            table = _v3_table()
+            table["properties"]["relations"]["belongsTo"] = body
+            return taxontoy.validate_document(table)
+
+        self.assertIn(
+            "properties.relations.belongsTo.domain: must be an object",
+            type_errors({"domain": ["File"]}),
+        )
+        self.assertIn(
+            "properties.relations.belongsTo.domain: unknown field note",
+            type_errors({"domain": {"types": ["File"], "since": "2026-11-21", "reason": "why", "note": 1}}),
+        )
+        self.assertIn(
+            "properties.relations.belongsTo.domain: types must be a non-empty array",
+            type_errors({"domain": {"types": [], "since": "2026-11-21", "reason": "why"}}),
+        )
+        self.assertIn(
+            "properties.relations.belongsTo.domain: types must be sorted and unique",
+            type_errors({"domain": {"types": ["PullRequest", "File"], "since": "2026-11-21", "reason": "why"}}),
+        )
+        self.assertIn(
+            "properties.relations.belongsTo.domain: types must be sorted and unique",
+            type_errors({"domain": {"types": [1], "since": "2026-11-21", "reason": "why"}}),
+        )
+        self.assertIn(
+            "properties.relations.belongsTo.domain: types must be non-empty strings",
+            type_errors({"domain": {"types": [" "], "since": "2026-11-21", "reason": "why"}}),
+        )
+        self.assertIn(
+            "properties.relations.belongsTo.range: missing since",
+            type_errors({"range": {"types": ["Repository"], "reason": "why"}}),
+        )
+        table = _v3_table()
+        table["properties"]["relations"]["dependsOn"] = {
+            "domain": {"types": ["PullRequest"], "since": "2026-11-21", "reason": "one source"},
+        }
+        edges = [
+            {"relation": "belongsTo", "source": "file", "target": "repo"},
+            {"relation": "belongsTo", "source": "issue", "target": "repo"},
+            {"relation": "belongsTo", "source": "file", "target": "other"},
+            {"relation": "belongsTo", "source": "loose", "target": "repo"},
+            {"relation": "dependsOn", "source": "pr", "target": "pr"},
+            {"relation": "dependsOn", "source": "issue", "target": "pr"},
+            "not-an-edge",
+        ]
+        nodes = {
+            "file": "File",
+            "issue": "Issue",
+            "repo": "Repository",
+            "other": "Commit",
+            "pr": "PullRequest",
+        }
+        violations, skipped = taxontoy.property_violations(table, edges, nodes)
+        self.assertEqual(skipped, 1)
+        kinds = {(item["property"], item["relations"][0], item["pair"]["source_type"], item["pair"]["target_type"]) for item in violations}
+        self.assertIn(("domain", "belongsTo", "Issue", "Repository"), kinds)
+        self.assertIn(("range", "belongsTo", "File", "Commit"), kinds)
+        self.assertIn(("domain", "belongsTo", None, "Repository"), kinds)
+        self.assertIn(("domain", "dependsOn", "Issue", "PullRequest"), kinds)
+        self.assertNotIn(("domain", "dependsOn", "PullRequest", "PullRequest"), kinds)
+        self.assertEqual(taxontoy.property_violations(table, edges, {})[0], [])
+        gaps = taxontoy._type_gaps(
+            table,
+            {"belongsTo": [edge for edge in edges if isinstance(edge, dict) and edge.get("relation") == "belongsTo"],
+             "dependsOn": [edge for edge in edges if isinstance(edge, dict) and edge.get("relation") == "dependsOn"]},
+            nodes,
+            table["audit"],
+            {"belongsTo", "depends_on"},
+            {"belongsTo", "dependsOn"},
+        )
+        belongs = gaps["relations"]["belongsTo"]
+        self.assertEqual(belongs["gap"]["actual_only"], [
+            {"source": "File", "target": "Commit"},
+            {"source": "Issue", "target": "Repository"},
+        ])
+        self.assertIn({"source": "PullRequest", "target": "Repository"}, belongs["gap"]["declared_only"])
+        depends = gaps["relations"]["dependsOn"]
+        self.assertEqual(depends["gap"]["actual_only"], [{"source": "Issue", "target": "PullRequest"}])
+        range_only = _v3_table()
+        range_only["properties"]["relations"]["belongsTo"] = {
+            "range": {"types": ["Repository"], "since": "2026-11-21", "reason": "target only"},
+        }
+        range_gaps = taxontoy._type_gaps(
+            range_only,
+            {"belongsTo": [{"source": "file", "target": "other"}]},
+            nodes,
+            range_only["audit"],
+            {"belongsTo"},
+            {"belongsTo"},
+        )
+        self.assertEqual(
+            range_gaps["relations"]["belongsTo"]["gap"]["actual_only"],
+            [{"source": "File", "target": "Commit"}],
+        )
+        empty_domain = taxontoy._declared_pairs({"domain": ["File"]}, set())
+        self.assertEqual(empty_domain, {("File", None)})
+        quiet = taxontoy._type_gaps(table, {}, {}, table["audit"], {"belongsTo"}, set())
+        self.assertEqual(quiet["note"], "types: skipped; nodes have no type")
+        self.assertNotIn("gap", quiet["relations"]["belongsTo"])
+        self.assertEqual(taxontoy._type_declarations({"properties": []}), {})
+        self.assertEqual(taxontoy._type_declarations({"properties": {"relations": {"belongsTo": "nope"}}}), {})
+        self.assertEqual(
+            taxontoy._type_declarations({"properties": {"relations": {"belongsTo": {"domain": "File"}}}}),
+            {},
+        )
+        self.assertFalse(taxontoy._pair_inside({"domain": ["File"], "range": ["Repository"]}, None, "Repository"))
+        self.assertFalse(taxontoy._pair_inside({"domain": ["File"]}, "Issue", "Repository"))
+        self.assertTrue(taxontoy._pair_inside({"domain": ["File"]}, "File", "Repository"))
+
+    def test_coverage_text_shows_weight_and_type_gaps(self):
+        table = _v3_table()
+        graphs = fixture_graphs()
+        graphs["audit"]["nodes"] = [
+            {"id": "a", "type": "PullRequest"},
+            {"id": "b", "type": "PullRequest"},
+            {"id": "c", "type": "PullRequest"},
+            {"id": "x", "type": "Observation"},
+            {"id": "y", "type": "PullRequest"},
+            {"id": "repo", "type": "Repository"},
+            {"id": "issue", "type": "Issue"},
+        ]
+        graphs["audit"]["edges"].append({"relation": "belongsTo", "source": "issue", "target": "repo"})
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_json(tmp, "table.json", table)
+            args = ["coverage", str(path), "--onto", ONTO, "--format", "text"]
+            for wave, payload in graphs.items():
+                graph = write_json(tmp, f"{wave}.json", payload)
+                args.extend(["--graph", f"{wave}={graph}"])
+            result = run(args)
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assertIn("edges classified 2 excluded 5 unclassified 0 total 7 ratio 2/7", result.stdout)
+            self.assertIn("types belongsTo domain File PullRequest range Repository", result.stdout)
+            self.assertIn("actual belongsTo Issue->Repository:1", result.stdout)
+            self.assertIn("gap actual_only belongsTo Issue->Repository", result.stdout)
+            self.assertIn("gap declared_only belongsTo File->Repository", result.stdout)
+            checked = run(["validate", str(path), "--format", "text"])
+            self.assertIn("excluded audit depends_on alias alias_of dependsOn since 2026-11-21", checked.stdout)
+            bare = fixture_graphs()
+            bare_args = ["coverage", str(path), "--onto", ONTO, "--format", "text"]
+            for wave, payload in bare.items():
+                graph = write_json(tmp, f"bare-{wave}.json", payload)
+                bare_args.extend(["--graph", f"{wave}={graph}"])
+            noted = run(bare_args)
+            self.assertIn("note types: skipped; nodes have no type", noted.stdout)
+
+    def test_properties_text_reports_a_type_violation(self):
+        table = _v3_table()
+        graph = {
+            "nodes": [
+                {"id": "issue", "type": "Issue"},
+                {"id": "repo", "type": "Repository"},
+            ],
+            "edges": [{"relation": "belongsTo", "source": "issue", "target": "repo"}],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            table_path = write_json(tmp, "table.json", table)
+            graph_path = write_json(tmp, "graph.json", graph)
+            result = run([
+                "properties", str(table_path), "--graph", str(graph_path), "--format", "text", "--strict",
+            ])
+        self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
+        self.assertIn("violation domain belongsTo source_type Issue target_type Repository", result.stdout)
+        self.assertIn("edge belongsTo issue repo", result.stdout)
+
+    def test_alias_declaration_marks_same_pairs_and_not_an_inverse(self):
+        table = _v3_table()
+        found, _notes = taxontoy.property_candidates(table, {
+            "dependsOn": [{"source": "a", "target": "b"}],
+            "depends_on": [{"source": "a", "target": "b"}],
+            "DependsOn": [{"source": "a", "target": "b"}],
+            "depends-on": [{"source": "a", "target": "b"}],
+            "blocks": [{"source": "b", "target": "a"}],
+            "duplicates": [{"source": "a", "target": "c"}],
+            "overlapsWith": [{"source": "a", "target": "c"}],
+        }, {})
+        declared = {
+            (item["detection"], tuple(item["relations"])): item["declared"]
+            for item in found
+        }
+        self.assertTrue(declared[("separator", ("DependsOn", "depends-on", "dependsOn", "depends_on"))])
+        self.assertTrue(declared[("same-pairs", ("dependsOn", "depends_on"))])
+        self.assertTrue(declared[("same-pairs", ("duplicates", "overlapsWith"))])
+        self.assertFalse(declared[("inverse-pair", ("blocks", "depends_on"))])
+        self.assertIsNone(taxontoy._alias_target(minimal_table(), "depends_on"))
+        self.assertEqual(taxontoy._alias_target(table, "depends_on"), "dependsOn")
+        self.assertIsNone(taxontoy._alias_target({"schema": taxontoy.SCHEMA_ID, "excluded": []}, "depends_on"))
+        self.assertIsNone(taxontoy._alias_target({"schema": taxontoy.SCHEMA_ID, "excluded": {"audit": "nope"}}, "depends_on"))
+
+    def test_reconcile_partitions_workflow_pins(self):
+        table = minimal_table()
+        table["repos"] = {"workflow-pin": "dependency"}
+        table["direction"]["workflow-pin"] = "forward"
+        table["excluded"]["repos"] = []
+        checkout = "Example/App"
+        same = _sha("a")
+        too_only = _sha("b")
+        audit_only = _sha("c")
+        left = _sha("d")
+        right = _sha("e")
+        edges = [
+            {"kind": "workflow-pin", "source": checkout, "path": ".github/workflows/ci.yml", "target": "actions/checkout", "pin": same.upper()},
+            {"kind": "workflow-pin", "source": checkout, "path": ".github/workflows/ci.yml", "target": "actions/setup-node", "pin": too_only},
+            {"kind": "workflow-pin", "source": checkout, "path": ".github/workflows/pages.yml", "target": "actions/checkout", "pin": left},
+            {"kind": "workflow-pin", "source": "other/app", "path": ".github/workflows/ci.yml", "target": "actions/checkout", "pin": same},
+            {"kind": "vendor", "source": checkout, "target": "up/lib"},
+            {"kind": "workflow-pin", "source": checkout, "path": "bad.yml", "target": "actions/checkout", "pin": "short"},
+            {"kind": "workflow-pin", "source": "", "path": "bad.yml", "target": "actions/checkout", "pin": same},
+            "not-an-edge",
+        ]
+        audit = {
+            "schema": "gh-identity-pin-audit/1",
+            "results": [
+                {
+                    "repository": "Actions/Checkout",
+                    "commit": same,
+                    "state": "ok",
+                    "pins": [{
+                        "repository": "Actions/Checkout",
+                        "commit": same,
+                        "file": ".github/workflows/ci.yml",
+                        "line": 3,
+                    }],
+                },
+                {
+                    "repository": "actions/upload-artifact",
+                    "commit": audit_only.upper(),
+                    "pins": [{"file": ".github/workflows/ci.yml", "line": 9}],
+                },
+                {
+                    "repository": "actions/checkout",
+                    "commit": right,
+                    "pins": [{"file": ".github/workflows/pages.yml", "line": 4, "source": "  "}],
+                },
+                {
+                    "repository": None,
+                    "commit": None,
+                    "state": "unavailable",
+                    "pins": [{"file": ".github/workflows/secret.yml", "line": 1}],
+                },
+            ],
+        }
+        too_pins, too_skipped = taxontoy._workflow_pin_records(table, edges)
+        self.assertEqual(too_skipped, 3)
+        audit_pins, audit_skipped = taxontoy._read_pin_audit_from(audit, "example/app")
+        self.assertEqual(audit_skipped, 1)
+        diff = taxontoy.reconcile_pins(too_pins, audit_pins)
+        self.assertEqual(diff["same"], [{
+            "path": ".github/workflows/ci.yml",
+            "sha": same,
+            "source": "example/app",
+            "target": "actions/checkout",
+        }])
+        self.assertEqual([row["sha"] for row in diff["only_taxontoy"]], [too_only, same])
+        self.assertEqual(diff["only_taxontoy"][0]["target"], "actions/setup-node")
+        self.assertEqual(diff["only_taxontoy"][1]["source"], "other/app")
+        self.assertEqual(diff["only_pin_audit"], [{
+            "path": ".github/workflows/ci.yml",
+            "sha": audit_only,
+            "source": "example/app",
+            "target": "actions/upload-artifact",
+        }])
+        self.assertEqual(diff["different_sha"], [{
+            "path": ".github/workflows/pages.yml",
+            "pin_audit": [right],
+            "source": "example/app",
+            "target": "actions/checkout",
+            "taxontoy": [left],
+        }])
+        self.assertEqual(taxontoy.reconcile_pins([], [])["same"], [])
+        with self.assertRaises(ValueError):
+            taxontoy._workflow_pin_records(minimal_table(), [])
+
+    def test_reconcile_cli_is_deterministic_and_records_provenance(self):
+        table = minimal_table()
+        table["repos"] = {"workflow-pin": "dependency"}
+        table["direction"]["workflow-pin"] = "forward"
+        table["excluded"]["repos"] = []
+        sha = _sha("a")
+        other = _sha("b")
+        graph = {"edges": [
+            {"kind": "workflow-pin", "source": "example/app", "path": ".github/workflows/ci.yml",
+             "target": "actions/checkout", "pin": sha},
+            {"kind": "workflow-pin", "source": "example/app", "path": ".github/workflows/ci.yml",
+             "target": "actions/setup-node", "pin": other},
+        ]}
+        audit = {
+            "schema": "gh-identity-pin-audit/1",
+            "results": [{
+                "repository": "actions/checkout",
+                "commit": sha,
+                "pins": [{"repository": "actions/checkout", "commit": sha, "file": ".github/workflows/ci.yml"}],
+            }, {
+                "repository": "actions/setup-node",
+                "commit": _sha("c"),
+                "pins": [{"commit": _sha("c"), "file": ".github/workflows/ci.yml", "source": "example/app"}],
+            }],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            table_path = write_json(tmp, "table.json", table)
+            graph_path = write_json(tmp, "graph.json", graph)
+            audit_path = write_json(tmp, "pin-audit.json", audit)
+            args = [
+                "reconcile", str(table_path), "--graph", str(graph_path),
+                "--pin-audit", str(audit_path), "--repo", " Example/App ",
+            ]
+            first = run([*args, "--format", "json"])
+            second = run([*args, "--json"])
+            self.assertEqual(first.returncode, 1, first.stderr + first.stdout)
+            self.assertEqual(first.stdout, second.stdout)
+            payload = json.loads(first.stdout)
+            self.assertEqual(
+                first.stdout,
+                json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            )
+            self.assertEqual(payload["version"], taxontoy.__version__)
+            self.assertEqual(payload["repository"], "example/app")
+            self.assertEqual(payload["counts"]["same"], 1)
+            self.assertEqual(payload["counts"]["different_sha"], 1)
+            self.assertEqual(payload["counts"]["only_taxontoy"], 0)
+            self.assertEqual(payload["counts"]["only_pin_audit"], 0)
+            self.assertEqual({item["path"] for item in payload["inputs"]}, {
+                str(table_path), str(graph_path), str(audit_path),
+            })
+            text = run([*args, "--format", "text"])
+            self.assertEqual(text.returncode, 1, text.stderr)
+            self.assertIn("different_sha example/app .github/workflows/ci.yml actions/setup-node", text.stdout)
+            self.assertIn(f"taxontoy {other} pin_audit {_sha('c')}", text.stdout)
+            self.assertIn("same example/app .github/workflows/ci.yml actions/checkout", text.stdout)
+            self.assertIn("repository example/app", text.stdout)
+            strict = run([*args, "--strict", "--json"])
+            self.assertEqual(strict.returncode, 2)
+            conflict = run([*args, "--json", "--format", "text"])
+            self.assertEqual(conflict.returncode, 1)
+            self.assertIn("disagree", conflict.stderr)
+            out = Path(tmp) / "out.json"
+            written = run([*args, "--json", "--output", str(out)])
+            self.assertEqual(written.stdout, "")
+            self.assertEqual(out.read_text(encoding="utf-8"), first.stdout)
+            env = os.environ.copy()
+            env["TAXONTOY_TABLE"] = str(table_path)
+            env["TAXONTOY_GRAPH"] = str(graph_path)
+            env["TAXONTOY_PIN_AUDIT"] = str(audit_path)
+            env["TAXONTOY_REPO"] = "example/app"
+            from_env = run(["reconcile", "--json"], env=env)
+            self.assertEqual(json.loads(from_env.stdout)["counts"], payload["counts"])
+            missing_audit = run(["reconcile", str(table_path), "--graph", str(graph_path)], env=os.environ.copy())
+            self.assertEqual(missing_audit.returncode, 1)
+            self.assertIn("pass --pin-audit or set TAXONTOY_PIN_AUDIT", missing_audit.stderr)
+            both = run([
+                "reconcile", str(table_path), "--graph", str(graph_path),
+                "--manifest", str(graph_path), "--pin-audit", str(audit_path),
+            ])
+            self.assertIn("pass --graph or --manifest", both.stderr)
+            blank = os.environ.copy()
+            blank["TAXONTOY_PIN_AUDIT"] = "   "
+            blank["TAXONTOY_GRAPH"] = "   "
+            blank["TAXONTOY_MANIFEST"] = "   "
+            unset = run(["reconcile", str(table_path)], env=blank)
+            self.assertIn("pass --graph or --manifest", unset.stderr)
+            lone = {
+                "schema": "gh-identity-pin-audit/1",
+                "results": [{
+                    "repository": "actions/checkout",
+                    "commit": _sha("f"),
+                    "pins": [{"file": ".github/workflows/missing.yml"}],
+                }],
+            }
+            lone_path = write_json(tmp, "lone.json", lone)
+            listed = run([
+                "reconcile", str(ROOT / "otl-relations.json"),
+                "--manifest", str(ROOT / "fixtures" / "repos" / "manifest.json"),
+                "--pin-audit", str(lone_path),
+                "--repo", "myon-bioinformatics/OnTautoLogy",
+                "--format", "text",
+            ])
+            self.assertEqual(listed.returncode, 1, listed.stderr + listed.stdout)
+            self.assertIn("only_taxontoy myon-bioinformatics/ontautology", listed.stdout)
+            self.assertIn("only_pin_audit myon-bioinformatics/ontautology .github/workflows/missing.yml", listed.stdout)
+            self.assertEqual(
+                taxontoy._audit_pin(
+                    {"repository": "actions/checkout", "commit": _sha("a"), "file": "ci.yml"},
+                    {},
+                    "",
+                )["source"],
+                "",
+            )
+
+    def test_reconcile_rejects_a_pin_audit_that_is_not_the_schema(self):
+        table = minimal_table()
+        table["repos"] = {"workflow-pin": "dependency"}
+        table["direction"]["workflow-pin"] = "forward"
+        table["excluded"]["repos"] = []
+        graph = {"edges": []}
+        cases = [
+            ({"schema": "other"}, "expected gh-identity-pin-audit/1"),
+            ({"schema": "gh-identity-pin-audit/1", "results": {}}, "results must be an array"),
+            ({"schema": "gh-identity-pin-audit/1", "results": ["nope"]}, "must be an object"),
+            ({"schema": "gh-identity-pin-audit/1", "results": [{"pins": "nope"}]}, "pins must be an array"),
+            ({"schema": "gh-identity-pin-audit/1", "results": [{"pins": ["nope"]}]}, "pins must contain objects"),
+            ({"schema": "gh-identity-pin-audit/1", "results": [{"repository": "actions/checkout", "commit": "zz", "pins": [{"file": "ci.yml"}]}]}, "commit must be 40 hex"),
+            ({"schema": "gh-identity-pin-audit/1", "results": [{"repository": "actions/checkout", "commit": _sha("a"), "pins": [{}]}]}, "must name a repository and a file"),
+            ({"schema": "gh-identity-pin-audit/1", "results": [{"pins": [{"repository": None, "commit": _sha("a"), "file": "ci.yml"}]}]}, "must name a repository and a file"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            table_path = write_json(tmp, "table.json", table)
+            graph_path = write_json(tmp, "graph.json", graph)
+            for index, (payload, message) in enumerate(cases):
+                audit_path = write_json(tmp, f"audit-{index}.json", payload)
+                result = run([
+                    "reconcile", str(table_path), "--graph", str(graph_path),
+                    "--pin-audit", str(audit_path), "--repo", "example/app",
+                ])
+                self.assertEqual(result.returncode, 1, payload)
+                self.assertIn(message, result.stderr)
+            manifest = write_json(tmp, "manifest.json", {"sources": []})
+            audit_path = write_json(tmp, "ok.json", {"schema": "gh-identity-pin-audit/1", "results": []})
+            via_manifest = run([
+                "reconcile", str(table_path), "--manifest", str(manifest),
+                "--pin-audit", str(audit_path),
+            ])
+            self.assertEqual(via_manifest.returncode, 1)
+            self.assertIn("sources", via_manifest.stderr)
+
+    def test_remaining_branches_are_executed(self):
+        self.assertFalse(taxontoy._is_v3(None))
+        self.assertFalse(taxontoy._is_v3({"schema": taxontoy.SCHEMA_V2}))
+        self.assertIsNone(taxontoy._alias_target({
+            "schema": taxontoy.SCHEMA_ID,
+            "excluded": {"audit": [
+                "nope",
+                {"relation": "other", "kind": "alias", "alias_of": "dependsOn"},
+                {"relation": "depends_on", "kind": "out_of_scope"},
+                {"relation": "depends_on", "kind": "alias", "alias_of": " "},
+            ]},
+        }, "depends_on"))
+        range_only = _v3_table()
+        range_only["properties"]["relations"]["belongsTo"] = {
+            "range": {"types": ["Repository"], "since": "2026-11-21", "reason": "target"},
+        }
+        self.assertTrue(taxontoy.property_violations(range_only, [
+            {"relation": "belongsTo", "source": "a", "target": "b"},
+        ], {"a": "File", "b": "Commit"})[0])
+        with self.assertRaises(ValueError):
+            taxontoy._workflow_pin_records({"repos": {"subtree": "hierarchy"}}, [])
+        domain_only = _v3_table()
+        domain_only["properties"]["relations"] = {
+            "belongsTo": {"domain": {"types": ["File"], "since": "2026-11-21", "reason": "source"}},
+        }
+        self.assertEqual(
+            taxontoy._type_gaps(domain_only, {"belongsTo": []}, {"a": "File"}, domain_only["audit"], {"belongsTo"}, set())
+            ["relations"]["belongsTo"]["gap"]["declared_only"],
+            [{"source": "File", "target": None}],
+        )
+        open_range = _v3_table()
+        open_range["properties"]["relations"] = {
+            "belongsTo": {"range": {"types": ["Repository"], "since": "2026-11-21", "reason": "target"}},
+        }
+        self.assertEqual(
+            taxontoy._type_gaps(open_range, {"belongsTo": []}, {"a": "File"}, open_range["audit"], {"belongsTo"}, set())
+            ["relations"]["belongsTo"]["gap"]["declared_only"],
+            [{"source": None, "target": "Repository"}],
+        )
+        self.assertEqual(taxontoy._type_declarations(None), {})
+        self.assertEqual(
+            taxontoy._type_declarations({"properties": {"relations": {"belongsTo": {"domain": {"types": "File"}}}}}),
+            {},
+        )
+        self.assertEqual(taxontoy._since_reason({"since": "2026-11-21"}, "where", []), None)
+        broken = _v3_table()
+        broken["audit"] = []
+        self.assertIn("audit: profile must be an object", taxontoy.validate_document(broken))
+        types = _v3_table()
+        types["properties"]["relations"]["belongsTo"]["domain"]["types"] = "File"
+        self.assertIn("types must be a non-empty array", " ".join(taxontoy.validate_document(types)))
+        self_alias = _v3_table()
+        self_alias["excluded"]["audit"][2]["alias_of"] = "depends_on"
+        found, _notes = taxontoy.property_candidates(self_alias, {
+            "dependsOn": [{"source": "a", "target": "b"}],
+            "depends_on": [{"source": "a", "target": "b"}],
+        }, {})
+        self.assertFalse(next(item["declared"] for item in found if item["detection"] == "separator"))
+        weight = taxontoy._edge_weight({"novel": [{}]}, [], [], ["novel"], 0)
+        self.assertEqual(weight["unclassified"], 1)
+        self.assertFalse(taxontoy._pair_inside({"domain": ["File"]}, "File", None))
+        self.assertFalse(taxontoy._pair_inside({"range": ["Repository"]}, "File", "Commit"))
+        self.assertEqual(taxontoy._declared_pairs({"range": ["Repository"]}, set()), {(None, "Repository")})
+        ghost = _v3_table()
+        ghost["properties"]["relations"]["ghost"] = {
+            "range": {"types": ["Repository"], "since": "2026-11-21", "reason": "open domain"},
+        }
+        gaps = taxontoy._type_gaps(
+            ghost,
+            {"ghost": [{"source": "a", "target": "missing"}], "belongsTo": [{"source": "loose", "target": "repo"}]},
+            {"a": "File", "repo": "Repository"},
+            ghost["audit"],
+            {"belongsTo"},
+            {"ghost"},
+        )
+        self.assertIn("ghost", gaps["relations"])
+        self.assertIsNone(gaps["relations"]["belongsTo"]["actual"][0]["source"])
+        catalog = minimal_table()
+        with self.assertRaises(ValueError):
+            taxontoy._workflow_pin_records(None, [])
+        with self.assertRaises(ValueError):
+            taxontoy._workflow_pin_records({"repos": []}, [])
+        sha = _sha("a")
+        _records, skipped = taxontoy._workflow_pin_records(
+            {**catalog, "repos": {"workflow-pin": "dependency"}},
+            [
+                {"kind": "workflow-pin", "source": "example/app", "target": "actions/checkout", "path": "ci.yml", "pin": None},
+                {"kind": "workflow-pin", "source": "example/app", "target": "", "path": "ci.yml", "pin": sha},
+                {"kind": "workflow-pin", "source": "example/app", "target": "actions/checkout", "path": 1, "pin": sha},
+                {"kind": "workflow-pin", "source": "example/app", "target": "actions/checkout", "path": "  ", "pin": sha},
+                {"kind": "workflow-pin", "source": "example/app", "target": "actions/checkout", "path": "ci.yml", "pin": sha},
+            ],
+        )
+        self.assertEqual(skipped, 4)
+        with tempfile.TemporaryDirectory() as tmp:
+            array_path = Path(tmp) / "array.json"
+            array_path.write_text("[]\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                taxontoy._read_pin_audit(array_path, "")
+            audit_path = write_json(tmp, "audit.json", {
+                "schema": "gh-identity-pin-audit/1",
+                "results": [{"repository": "actions/checkout", "pins": [{"commit": 1, "file": "ci.yml"}]}],
+            })
+            with self.assertRaises(ValueError):
+                taxontoy._read_pin_audit(audit_path, "example/app")
+            with self.assertRaises(ValueError):
+                taxontoy._audit_pin({"repository": "actions/checkout", "commit": sha, "file": 1}, {}, "example/app")
+            with self.assertRaises(ValueError):
+                taxontoy._audit_pin({"repository": "actions/checkout", "commit": sha, "file": " "}, {}, "example/app")
+            table = _v3_table()
+            table["properties"]["relations"]["dependsOn"] = {
+                "domain": {"types": ["PullRequest"], "since": "2026-11-21", "reason": "one side"},
+            }
+            table["properties"]["relations"]["duplicates"] = {
+                "range": {"types": ["PullRequest"], "since": "2026-11-21", "reason": "other side"},
+            }
+            table_path = write_json(tmp, "table.json", table)
+            graphs = fixture_graphs()
+            graphs["audit"]["nodes"] = [{"id": "a", "type": "PullRequest"}, {"id": "b", "type": "PullRequest"}, {"id": "c", "type": "PullRequest"}]
+            graphs["audit"]["edges"].append({"relation": "belongsTo", "source": "a", "target": "gone"})
+            args = ["coverage", str(table_path), "--onto", ONTO, "--format", "text"]
+            for wave, payload in graphs.items():
+                args.extend(["--graph", f"{wave}={write_json(tmp, f'{wave}.json', payload)}"])
+            text = run(args)
+            self.assertIn("range -", text.stdout)
+            self.assertIn("domain -", text.stdout)
+            match_audit = {
+                "schema": "gh-identity-pin-audit/1",
+                "results": [{
+                    "repository": "actions/checkout",
+                    "commit": sha,
+                    "pins": [{"file": ".github/workflows/ci.yml"}],
+                }],
+            }
+            match_path = write_json(tmp, "match.json", match_audit)
+            graph = {"edges": [{
+                "kind": "workflow-pin", "source": "example/app", "target": "actions/checkout",
+                "path": ".github/workflows/ci.yml", "pin": sha,
+            }]}
+            graph_path = write_json(tmp, "graph.json", graph)
+            pin_table = minimal_table()
+            pin_table["repos"] = {"workflow-pin": "dependency"}
+            pin_table["direction"]["workflow-pin"] = "forward"
+            pin_table["excluded"]["repos"] = []
+            pin_table_path = write_json(tmp, "pins.json", pin_table)
+            matched = run([
+                "reconcile", str(pin_table_path), "--graph", str(graph_path),
+                "--pin-audit", str(match_path), "--repo", "example/app", "--format", "text",
+            ])
+            self.assertEqual(matched.returncode, 0, matched.stderr + matched.stdout)
+            self.assertIn(f"same example/app .github/workflows/ci.yml actions/checkout {sha}", matched.stdout)
+            shifted = run([
+                "reconcile", str(pin_table_path), "--graph", str(graph_path),
+                "--pin-audit", str(write_json(tmp, "shifted.json", {
+                    "schema": "gh-identity-pin-audit/1",
+                    "results": [{
+                        "repository": "actions/checkout",
+                        "commit": _sha("b"),
+                        "pins": [{"file": ".github/workflows/ci.yml"}],
+                    }],
+                })),
+                "--repo", "example/app", "--format", "text",
+            ])
+            self.assertEqual(shifted.returncode, 1, shifted.stderr + shifted.stdout)
+            self.assertIn("different_sha example/app", shifted.stdout)
+            self.assertNotIn("only_taxontoy example/app", shifted.stdout)
+            audit_only = run([
+                "reconcile", str(pin_table_path),
+                "--graph", str(write_json(tmp, "empty.json", {"edges": []})),
+                "--pin-audit", str(match_path),
+                "--repo", "example/app", "--format", "text",
+            ])
+            self.assertIn("only_pin_audit example/app", audit_only.stdout)
+            self.assertNotIn("repository example/app\n", run([
+                "reconcile", str(pin_table_path), "--graph", str(graph_path),
+                "--pin-audit", str(match_path), "--format", "text",
+            ]).stdout)
+            only_audit = run([
+                "reconcile", str(pin_table_path), "--graph", str(graph_path),
+                "--pin-audit", str(write_json(tmp, "extra.json", {
+                    "schema": "gh-identity-pin-audit/1",
+                    "results": [{
+                        "repository": "actions/upload-artifact",
+                        "commit": _sha("b"),
+                        "pins": [{"file": ".github/workflows/ci.yml"}],
+                    }],
+                })),
+                "--format", "json",
+            ])
+            self.assertEqual(only_audit.returncode, 1)
+            self.assertIsNone(json.loads(only_audit.stdout)["repository"])
+            rendered = taxontoy._render_text({
+                "version": taxontoy.__version__,
+                "command": "properties",
+                "ok": False,
+                "inputs": [],
+                "errors": [],
+                "violations": [{
+                    "property": "domain",
+                    "relations": ["belongsTo"],
+                    "pair": {"source_type": None, "target_type": None},
+                    "edges": [{"kind": "belongsTo", "source": "a", "target": "b"}],
+                }],
+                "double_distribution": {"count": 0},
+                "skipped": 0,
+            })
+            self.assertIn("source_type missing target_type missing", rendered)
+
+    def test_v3_mutations_are_killed_by_the_functional_snapshot(self):
+        source = (ROOT / "taxontoy.py").read_text(encoding="utf-8")
+        mutations = [
+            (
+                "classified_edges + excluded_edges + unclassified_edges + malformed",
+                "classified_edges + unclassified_edges + malformed",
+            ),
+            (
+                'if not isinstance(item, dict) or item.get("relation") != relation or item.get("kind") != "alias":',
+                'if not isinstance(item, dict) or item.get("relation") != relation or item.get("kind") == "alias":',
+            ),
+            (
+                'if kind == "alias":',
+                'if kind == "out_of_scope":',
+            ),
+            (
+                "if seen != sorted(set(seen)):",
+                "if False and seen != sorted(set(seen)):",
+            ),
+            (
+                'if _is_v3(table):\n            waves[wave]["edge_weight"] = _edge_weight(',
+                'if False:\n            waves[wave]["edge_weight"] = _edge_weight(',
+            ),
+            (
+                'if "domain" in declared and source not in declared["domain"]:\n                found.append({',
+                'if False:\n                found.append({',
+            ),
+            (
+                'if "range" in declared and target not in declared["range"]:\n                found.append({',
+                'if False:\n                found.append({',
+            ),
+            (
+                "if not _pair_inside(declared, source, target)",
+                "if False",
+            ),
+            (
+                "allowed - observed",
+                "observed - allowed",
+            ),
+            (
+                "if not right:\n            only_too.extend",
+                "if not left:\n            only_too.extend",
+            ),
+            (
+                "if left == right:",
+                "if left != right:",
+            ),
+            (
+                'if not isinstance(commit, str) or _SHA.fullmatch(commit.lower()) is None:',
+                'if not isinstance(commit, str) or _SHA.fullmatch(commit) is None:',
+            ),
+            (
+                "if repository is None and commit is None:\n        return None",
+                "if False and repository is None and commit is None:\n        return None",
+            ),
+            (
+                'target = _endpoint(repository) if repository is not None else None',
+                "target = repository if repository is not None else None",
+            ),
+        ]
+        golden = _v3_snapshot(taxontoy)
+        killed, survived = [], []
+        for old, new in mutations:
+            self.assertEqual(source.count(old), 1, old)
+            try:
+                module = _load_mutant(source.replace(old, new, 1))
+                found = _v3_snapshot(module)
+            except Exception:
+                killed.append(old)
+                continue
+            if found != golden:
+                killed.append(old)
+            else:
+                survived.append(old)
+        sys.stderr.write(f"v3 mutation killed={len(killed)} survived={len(survived)}\n")
+        self.assertEqual(survived, [], survived)
+
+
+def _read_pin_audit_from(module, payload, source):
+    import tempfile as _tempfile
+    directory = Path(_tempfile.mkdtemp(prefix="pin-audit-"))
+    path = directory / "audit.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return module._read_pin_audit(path, source)
+
+
+def _v3_snapshot(module):
+    table = _v3_table()
+    bad_alias = _v3_table()
+    bad_alias["excluded"]["audit"] = [
+        _exclusion("depends_on", "alias", "dependsOn"),
+        _exclusion("belongsTo"),
+    ]
+    graphs = {wave: list(body["edges"]) for wave, body in fixture_graphs().items()}
+    graphs["audit"].append({"relation": "belongsTo", "source": "issue", "target": "repo"})
+    nodes = {
+        "a": "PullRequest", "b": "PullRequest", "c": "PullRequest",
+        "issue": "Issue", "repo": "Repository", "other": "Commit",
+    }
+    edges = [
+        {"relation": "belongsTo", "source": "issue", "target": "repo"},
+        {"relation": "belongsTo", "source": "a", "target": "other"},
+        {"kind": "workflow-pin", "source": "Example/App", "path": ".github/workflows/ci.yml",
+         "target": "Actions/Checkout", "pin": _sha("a").upper()},
+        {"kind": "workflow-pin", "source": "example/app", "path": ".github/workflows/pages.yml",
+         "target": "actions/checkout", "pin": _sha("d")},
+    ]
+    catalog = minimal_table()
+    catalog["repos"] = {"workflow-pin": "dependency"}
+    catalog["direction"]["workflow-pin"] = "forward"
+    catalog["excluded"]["repos"] = []
+    audit = {
+        "schema": "gh-identity-pin-audit/1",
+        "results": [
+            {"repository": "Actions/Checkout", "commit": _sha("a").upper(), "pins": [
+                {"file": ".github/workflows/ci.yml", "line": 1},
+            ]},
+            {"repository": "actions/checkout", "commit": _sha("e"), "pins": [
+                {"file": ".github/workflows/pages.yml", "line": 2},
+            ]},
+            {"repository": None, "commit": None, "pins": [{"file": "secret.yml", "line": 1}]},
+            {"repository": "actions/upload-artifact", "commit": _sha("c"), "pins": [
+                {"file": ".github/workflows/ci.yml", "source": "example/app"},
+            ]},
+        ],
+    }
+    too_pins, too_skipped = module._workflow_pin_records(catalog, edges)
+    audit_pins, audit_skipped = _read_pin_audit_from(module, audit, "example/app")
+
+    class _Kg:
+        def topological_order(self, _edges):
+            return {"cycle": None}
+
+        def relation_cycles(self, _edges):
+            return []
+
+    waves, _errors = module.cover_waves(table, graphs, _Kg(), {"audit": nodes, "concepts": {}, "cases": {}})
+    return {
+        "alias": module._alias_target(table, "depends_on"),
+        "covered": waves["audit"].get("edge_weight"),
+        "audit_skipped": audit_skipped,
+        "bad": module.validate_document(bad_alias),
+        "diff": module.reconcile_pins(too_pins, audit_pins),
+        "gaps": module._type_gaps(
+            table,
+            {"belongsTo": edges[:2], "dependsOn": [{"source": "a", "target": "b"}]},
+            nodes,
+            table["audit"],
+            {"belongsTo"},
+            {"belongsTo", "dependsOn"},
+        ),
+        "ok": module.validate_document(table),
+        "too_skipped": too_skipped,
+        "violations": module.property_violations(table, edges[:2], nodes)[0],
+        "weight": module._edge_weight(
+            {"dependsOn": [{}], "blocks": [{}, {}]},
+            ["dependsOn"],
+            ["blocks"],
+            [],
+            1,
+        ),
+    }
+
+
+# The helper used by RelationV3Tests is the module function; tests call it through taxontoy.
+taxontoy._read_pin_audit_from = lambda payload, source: _read_pin_audit_from(taxontoy, payload, source)
 
 
 class ZLineCoverageTests(unittest.TestCase):

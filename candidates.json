@@ -16,12 +16,12 @@
     },
     {
       "path": "otl-relations.json",
-      "sha256": "4fab63b2160446b9a6da5990080832087a32c602775899ab34caae47705e5687"
+      "sha256": "857e015d7df020509dda6ec43dd8a9f74784c8a1976a40828d174b7cba4c3b4a"
     }
   ],
   "ok": true,
   "tool": "taxontoy",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "waves": {
     "audit": {
       "candidates": [
@@ -106,7 +106,7 @@
           ]
         },
         {
-          "declared": false,
+          "declared": true,
           "detection": "same-pairs",
           "folded": false,
           "relations": [
@@ -115,7 +115,7 @@
           ]
         },
         {
-          "declared": false,
+          "declared": true,
           "detection": "same-pairs",
           "folded": false,
           "relations": [
@@ -133,7 +133,7 @@
           ]
         },
         {
-          "declared": false,
+          "declared": true,
           "detection": "separator",
           "folded": false,
           "relations": [
