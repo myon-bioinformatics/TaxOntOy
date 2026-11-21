@@ -372,6 +372,10 @@ class CommittedReportTests(unittest.TestCase):
             "folded": False,
             "relations": ["blocks", "dependsOn"],
         }, audit)
+        self.assertEqual(
+            audit,
+            sorted(audit, key=lambda item: (item["detection"], item["relations"])),
+        )
         polysemy = next(item for item in audit if item["detection"] == "polysemy")
         self.assertEqual(polysemy["relations"], ["belongsTo"])
         self.assertEqual(len(polysemy["patterns"]), 5)
@@ -840,16 +844,18 @@ class PropertyValidationTests(unittest.TestCase):
     def test_remaining_property_branches(self):
         for bad in (
             "nope", "abcd-ef-gh", "2026/11/15", "+026-11-15", "2026-11-1",
+            "20261115", "2026-11-15\n", "2026-W01-1", "2026-02-31",
             "２０２６-１１-１５", "٢٠٢٦-١١-١٥", None, 20261115,
         ):
             self.assertFalse(taxontoy._iso_date(bad), bad)
         self.assertTrue(taxontoy._iso_date("2026-11-15"))
-        fullwidth = minimal_table()
-        fullwidth["properties"]["classes"]["hierarchy"] = {"transitive": _evidence(since="２０２６-１１-１５")}
-        self.assertEqual(
-            taxontoy.validate_document(fullwidth),
-            ["properties.classes.hierarchy.transitive: invalid since"],
-        )
+        for bad_since in ("２０２６-１１-１５", "٢٠٢٦-١١-١٥"):
+            bad_doc = minimal_table()
+            bad_doc["properties"]["classes"]["hierarchy"] = {"transitive": _evidence(since=bad_since)}
+            self.assertEqual(
+                taxontoy.validate_document(bad_doc),
+                ["properties.classes.hierarchy.transitive: invalid since"],
+            )
         self.assertIsNone(taxontoy._class_of(minimal_table(), "blocks"))
         bare = minimal_table()
         bare["properties"]["relations"]["dependsOn"] = {"transitive": _evidence()}
@@ -885,7 +891,10 @@ class PropertyValidationTests(unittest.TestCase):
         samples.append(class_flag)
         class_both = minimal_table()
         class_both["properties"]["classes"]["hierarchy"] = {"symmetric": _evidence(), "acyclic": _evidence()}
-        samples.append(class_both)
+        self.assertEqual(
+            taxontoy.validate_document(class_both),
+            ["class hierarchy: symmetric and acyclic contradict"],
+        )
         unknown_relation = minimal_table()
         unknown_relation["properties"]["relations"]["ghost"] = {}
         samples.append(unknown_relation)
@@ -989,6 +998,39 @@ class PropertyValidationTests(unittest.TestCase):
         self.assertEqual(
             taxontoy.validate_document(unsorted),
             ["properties.relations.dependsOn.disjoint_with: must be sorted and unique"],
+        )
+        bad_excluded_type = minimal_table()
+        bad_excluded_type["excluded"]["audit"] = {"ghost": 1}
+        bad_excluded_type["properties"]["relations"]["ghost"] = {}
+        self.assertEqual(taxontoy.validate_document(bad_excluded_type), [
+            "excluded.audit: must be an array",
+            "properties.relations.ghost: unknown relation ghost",
+        ])
+        relation_body = minimal_table()
+        relation_body["properties"]["relations"]["dependsOn"] = ["transitive"]
+        self.assertEqual(
+            taxontoy.validate_document(relation_body),
+            ["properties.relations.dependsOn: must be an object"],
+        )
+        unknown_rel_flag = minimal_table()
+        unknown_rel_flag["properties"]["relations"]["dependsOn"] = {"reflexive": {"since": "bad"}}
+        self.assertEqual(
+            taxontoy.validate_document(unknown_rel_flag),
+            ["properties.relations.dependsOn: unknown property reflexive"],
+        )
+        disjoint_missing_rel = minimal_table()
+        disjoint_missing_rel["properties"]["relations"]["dependsOn"] = {
+            "disjoint_with": [_evidence(), {"relation": "blocks", **_evidence()}]
+        }
+        self.assertEqual(
+            taxontoy.validate_document(disjoint_missing_rel),
+            ["properties.relations.dependsOn.disjoint_with[0]: missing relation"],
+        )
+        bad_rel_acyclic = minimal_table()
+        bad_rel_acyclic["properties"]["relations"]["duplicates"] = {"acyclic": {"reason": "missing date"}}
+        self.assertEqual(
+            taxontoy.validate_document(bad_rel_acyclic),
+            ["properties.relations.duplicates.acyclic: missing since"],
         )
 
         graphs = fixture_graphs()
@@ -1095,6 +1137,10 @@ class CandidateTests(unittest.TestCase):
             "folded": False,
             "relations": ["similarTo"],
         }, concepts)
+        self.assertEqual(
+            audit,
+            sorted(audit, key=lambda item: (item["detection"], item["relations"])),
+        )
         polysemy = next(item for item in audit if item["detection"] == "polysemy")
         self.assertEqual(polysemy["relations"], ["belongsTo"])
         self.assertFalse(polysemy["declared"])
@@ -1148,6 +1194,10 @@ class CandidateTests(unittest.TestCase):
         self.assertIn("wave audit", result.stdout)
         self.assertIn("wave concepts", result.stdout)
         self.assertIn("wave cases", result.stdout)
+        self.assertIn(
+            "candidate polysemy declared no belongsTo ActionsRun->Repository:1 PullRequest->Repository:1",
+            result.stdout,
+        )
         self.assertIn("candidate separator declared no DependsOn depends-on dependsOn depends_on", result.stdout)
         self.assertIn("candidate inverse-pair declared yes blocks dependsOn", result.stdout)
         self.assertIn("candidate symmetric declared yes similarTo", result.stdout)
