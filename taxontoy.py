@@ -141,7 +141,7 @@ def _relation_name(edge):
         name = edge["relation"]
     else:
         raise KeyError("relation")
-    if not _name_ok(name) or "source" not in edge or "target" not in edge:
+    if not _name_ok(name) or not _name_ok(edge.get("source")) or not _name_ok(edge.get("target")):
         raise ValueError("edge")
     return name
 
@@ -238,14 +238,27 @@ def cover_waves(table, graphs, knowledgegraph):
         graph_names = set(grouped)
         mapping = table[wave]
         excluded = table["excluded"][wave]
-        classified_present = sorted(set(mapping) & graph_names)
-        excluded_present = sorted(set(excluded) & graph_names)
-        unclassified = sorted(graph_names - set(mapping) - set(excluded))
-        stale = sorted((set(mapping) | set(excluded)) - graph_names)
+        classified_set = set(mapping) & graph_names
+        excluded_set = set(excluded) & graph_names
+        unclassified_set = graph_names - set(mapping) - set(excluded)
+        stale_set = (set(mapping) | set(excluded)) - graph_names
+        classified_present = sorted(classified_set)
+        excluded_present = sorted(excluded_set)
+        unclassified = sorted(unclassified_set)
+        stale = sorted(stale_set)
         total = len(graph_names)
-        holds = len(classified_present) + len(excluded_present) + len(unclassified) == total
+        # Recount from both sides: the four buckets must be pairwise
+        # disjoint and must cover graph names union table names.
+        # Classified+excluded+unclassified == total is already true of
+        # any split of graph_names; including stale and rejecting a
+        # classified/excluded overlap makes this fail when the table
+        # and the graph disagree about membership.
+        universe = graph_names | set(mapping) | set(excluded)
+        buckets = (classified_set, excluded_set, unclassified_set, stale_set)
+        overlap = any(left & right for i, left in enumerate(buckets) for right in buckets[i + 1:])
+        holds = (not overlap) and (not (set(mapping) & set(excluded))) and (set().union(*buckets) == universe)
         if not holds:
-            errors.append(f"partition {wave}: classified+excluded+unclassified != total")
+            errors.append(f"partition {wave}: graph and table name sets do not close")
         if unclassified:
             errors.append(f"unclassified {wave}: {', '.join(unclassified)}")
         if stale:
