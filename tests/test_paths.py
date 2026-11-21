@@ -95,9 +95,10 @@ class LayoutTests(unittest.TestCase):
             _touch(onto / MARKER)
             project = root / "TaxOntOy"
             script = _touch(project / "tool.py", "")
-            self.assertEqual(onto_path.resolve_root("ONTO", anchor=script), onto.resolve())
-            self.assertEqual(onto_path.resolve_root("ONTO", anchor=project), onto.resolve())
-            self.assertEqual(onto_path.marker_file("ONTO", anchor=script), (onto / MARKER).resolve())
+            with _cleared_roots():
+                self.assertEqual(onto_path.resolve_root("ONTO", anchor=script), onto.resolve())
+                self.assertEqual(onto_path.resolve_root("ONTO", anchor=project), onto.resolve())
+                self.assertEqual(onto_path.marker_file("ONTO", anchor=script), (onto / MARKER).resolve())
         self.assertEqual(onto_path._anchor_dir(None), Path(onto_path.__file__).resolve().parent)
         with self.assertRaises(onto_path.RootError) as raised:
             onto_path.resolve_root("missing-checkout", anchor=ROOT)
