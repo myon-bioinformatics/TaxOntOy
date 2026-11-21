@@ -13,6 +13,7 @@
 - `direction` は分類した関係すべての向きです。`forward` は一方向、`mutual` は両方向を別の辺として保存、`undirected` は向きが無くグラフ JSON では一方向だけ記録します。クラスと向きが食い違うと検査は失敗します。
 - `excluded` はグラフに現れるが、その弾の意味クラスには入れない関係名です。並べて重複なく書きます。分類と除外の両方に入る名前は失敗です。
 - オブジェクトのキーが重複している JSON は失敗です。
+- `properties` はクラスまたは関係ごとの性質です。使える名前は `transitive`、`symmetric`、`inverse_of`、`acyclic`、`disjoint_with` です。各宣言には `since`（YYYY-MM-DD）と `reason` が要ります。`inverse_of` は表にある相手を指し、相手も自分を逆として宣言していなければなりません。`symmetric` と `acyclic` は同時に宣言できません。`disjoint_with` が自分自身を指すと失敗です。クラスに書いた性質は、そのクラスの関係に引き継がれます。
 
 `dependsOn` は依存する側から前提への `forward`、`duplicates` は `undirected`、`narrower` は上位から下位への `forward`、`similarTo` は `mutual` です。
 
@@ -22,7 +23,9 @@
 
 辺の関係名は `kind` があればそれ、無ければ `relation` です。入力パスは引数か環境変数だけです。`TAXONTOY_TABLE` は表のパス、`ONTO_CHECKOUT` は ONTO の checkout です。`--onto` を付けるとその checkout を使います。循環検出とトポロジカル順は、その checkout の `knowledgegraph.py` をそのまま呼びます。報告に載るのは非循環かどうかと、サンプル閉路の件数だけです。ノード ID は出しません。
 
-監査グラフは同じ端点に別名の辺も足します。`dependsOn` と `depends_on` は区切りの違い、`duplicates` と `overlapsWith` は同じ向きで端点が一致、`dependsOn` と `blocks` は向きが逆、という候補を出します。候補は畳み込まず、辺数は名前ごとに数えます。`depends_on` を `dependsOn` に足すことはしません。
+監査グラフは同じ端点に別名の辺も足します。`taxontoy coverage` は辺数を名前ごとに数え、`depends_on` を `dependsOn` に足しません。`taxontoy candidates` は畳まずに候補だけを出します。区切りの違い（`dependsOn` / `depends_on` / `depends-on`）、大文字小文字の違い、逆向きが常に対になる組、辺が常に逆向きにもある関係、端点の種類が二つ以上に割れる関係です。ノードに `type` が無いグラフでは多義の検出を省き、その旨を書きます。宣言と一致する候補には `declared` を付けますが、分類には使いません。
+
+パスの前後の空白は除きます。空白だけなら、その引数や環境変数は未設定です。
 
 ```sh
 python -S taxontoy.py validate otl-relations.json
@@ -33,15 +36,20 @@ python -S taxontoy.py coverage otl-relations.json \
   --graph cases=build/cases.json \
   --onto ../ONTO \
   --format json
+python -S taxontoy.py candidates otl-relations.json \
+  --graph audit=build/audit.json \
+  --graph concepts=build/concepts.json \
+  --graph cases=build/cases.json \
+  --format json
 ```
 
 `--json` は `--format json` の省略です。両方を矛盾させて渡すと失敗します。`validate` の既定は text、`coverage` の既定は json です。報告にはツールの版、入力パス、各ファイルの sha256 が入ります。標準出力か `--output` で指定したファイル以外には書きません。表が壊れている、被覆が閉じていないときは終了コード 1、`--strict` のとき被覆の失敗は 2 です。
 
 ## 固定したグラフとの差分
 
-`coverage.json` は、ONTO の main への第一親マージ `8ca1ee5dc8c2714ddcdea6db6774f7168c0e617b` と、OnTautoLogy の main への第一親マージ `b062960e3ef63aa80d6d4c9b6e028219f1690bc4` から作った報告です。CI は同じ手順で作り直し、差分があれば失敗します。
+`coverage.json` と `candidates.json` は、ONTO の main への第一親マージ `8ca1ee5dc8c2714ddcdea6db6774f7168c0e617b` と、OnTautoLogy の main への第一親マージ `b062960e3ef63aa80d6d4c9b6e028219f1690bc4` から作った報告です。CI は同じ手順で作り直し、差分があれば失敗します。推移の成立と、宣言した非循環をグラフ上で証明することはここではありません。閉路の列挙は ONTO、サンプルのノード列は TopOntoLogy に残します。
 
-Python 3.11 以降です。依存パッケージはありません。テストは次です。
+Python 3.11 以降です。依存パッケージはありません。`since` は ASCII の `YYYY-MM-DD` だけです。テストは次です。テスト自身が行の実行を数えるため、プロセス内にトレーサを置きます。別のカバレッジ計測を同じプロセスに重ねると、プロセス内の行が数え漏れます。
 
 ```sh
 ONTO_CHECKOUT=../ONTO uv run --no-project python -S -m unittest discover -s tests -v

@@ -1,5 +1,5 @@
 {
-  "schema": "taxontoy-relations/1",
+  "schema": "taxontoy-relations/2",
   "audit": {
     "dependsOn": "dependency",
     "duplicates": "overlap"
@@ -54,5 +54,65 @@
       "observes"
     ],
     "cases": []
+  },
+  "properties": {
+    "classes": {
+      "dependency": {
+        "acyclic": {
+          "since": "2026-11-14",
+          "reason": "dependsOn の閉路は監査の完了順を止める"
+        }
+      },
+      "hierarchy": {
+        "acyclic": {
+          "since": "2026-11-15",
+          "reason": "階層の循環は分類の誤りとして扱う"
+        },
+        "transitive": {
+          "since": "2026-11-15",
+          "reason": "上位から下位への narrower は推移する"
+        }
+      },
+      "similarity": {
+        "symmetric": {
+          "since": "2026-11-15",
+          "reason": "similarTo は両方向を別の辺として保存する"
+        }
+      }
+    },
+    "relations": {
+      "blocks": {
+        "inverse_of": {
+          "relation": "dependsOn",
+          "since": "2026-11-14",
+          "reason": "blocks は dependsOn の逆向きとして監査グラフに足される"
+        }
+      },
+      "dependsOn": {
+        "inverse_of": {
+          "relation": "blocks",
+          "since": "2026-11-14",
+          "reason": "監査グラフは dependsOn の逆向きを blocks として足す"
+        }
+      },
+      "narrower": {
+        "disjoint_with": [
+          {
+            "relation": "similarTo",
+            "since": "2026-11-15",
+            "reason": "階層の端点は類似の端点と重ならない"
+          }
+        ]
+      },
+      "similarTo": {
+        "disjoint_with": [
+          {
+            "relation": "narrower",
+            "since": "2026-11-15",
+            "reason": "類似の端点は階層の端点と重ならない"
+          }
+        ]
+      }
+    }
   }
 }
