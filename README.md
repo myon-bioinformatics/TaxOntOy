@@ -12,6 +12,8 @@
 
 第二弾では上位から下位へ向かう `narrower` と、両方向が別の辺になる `similarTo` を別々に集計します。第三弾では候補、人の判断記録、肯定を別々に数えます。否定クラス `negation` は知っていますが、固定した事例グラフに `holds false` の辺が無いので表には入れていません。その辺が現れたら未分類になり、検査が失敗します。未登録の関係は元のグラフに残ります。TopOntoLogy の `topology.py` は各弾のオブジェクトを関係名からクラス名への対応として読み、分類ごとの構造を集計します。OnTautoLogy が事例の判定を担当します。
 
+分類表を生成するコマンドの出力は `python -S taxontoy.py validate - --json` に直接渡せます。レポートの `inputs` には標準入力を `-` として記録し、読み込んだバイト列のSHA-256を返します。
+
 ## 表の形
 
 [otl-relations.schema.json](otl-relations.schema.json) が形です。検査そのものは標準ライブラリの `taxontoy validate` が行います。

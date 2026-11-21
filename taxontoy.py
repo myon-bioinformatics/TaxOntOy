@@ -88,7 +88,7 @@ def _sha256(path):
     return digest.hexdigest()
 
 
-def _load_json(path):
+def _parse_json(text):
     def pairs(items):
         obj = {}
         for key, value in items:
@@ -97,8 +97,16 @@ def _load_json(path):
             obj[key] = value
         return obj
 
-    text = Path(path).read_text(encoding="utf-8")
     return json.loads(text, object_pairs_hook=pairs)
+
+
+def _load_json(path):
+    return _parse_json(Path(path).read_text(encoding="utf-8"))
+
+
+def _read_table(path):
+    raw = sys.stdin.buffer.read() if path == "-" else Path(path).read_bytes()
+    return _parse_json(raw.decode("utf-8")), {"path": path, "sha256": hashlib.sha256(raw).hexdigest()}
 
 
 def _name_ok(value):
@@ -1684,8 +1692,9 @@ def _display_path(path):
         return resolved.as_posix()
 
 
-def _inputs(paths):
+def _inputs(paths, *observed):
     rows = [{"path": path, "sha256": _sha256(path)} for path in paths]
+    rows.extend(observed)
     rows.sort(key=lambda item: item["path"])
     return rows
 
@@ -1910,11 +1919,11 @@ def _render(payload, fmt):
     return _dump(payload) if fmt == "json" else _render_text(payload)
 
 
-def _validate_payload(path, data, errors):
+def _validate_payload(table_input, data, errors):
     payload = {
         "command": "validate",
         "errors": errors,
-        "inputs": _inputs([path]),
+        "inputs": [table_input],
         "ok": not errors,
         "tool": "taxontoy",
         "version": __version__,
@@ -2052,15 +2061,14 @@ def main(argv=None):
             }
             _emit(_render(payload, fmt), output)
             return 0
-        table_path = _table_path(args)
-        data = _load_json(table_path)
+        data, table_input = _read_table(_table_path(args))
         errors = validate_document(data)
         if args.command == "validate":
-            payload = _validate_payload(table_path, data if isinstance(data, dict) else {}, errors)
+            payload = _validate_payload(table_input, data if isinstance(data, dict) else {}, errors)
             _emit(_render(payload, fmt), output)
             return 0 if payload["ok"] else 1
         if errors:
-            payload = _validate_payload(table_path, data if isinstance(data, dict) else {}, errors)
+            payload = _validate_payload(table_input, data if isinstance(data, dict) else {}, errors)
             payload["command"] = args.command
             _emit(_render(payload, fmt), output)
             return 1
@@ -2076,7 +2084,7 @@ def main(argv=None):
                 "command": "rank-unclassified",
                 "counts": ranked["counts"],
                 "errors": [],
-                "inputs": _inputs([graph_path, table_path]),
+                "inputs": _inputs([graph_path], table_input),
                 "nameless": ranked["nameless"],
                 "ok": True,
                 "profile": args.profile,
@@ -2092,19 +2100,19 @@ def main(argv=None):
                 built, inputs = _graph_from_manifest(manifest)
                 edges = built["edges"]
                 node_types = _node_types(built["nodes"])
-                input_paths = [table_path, *inputs]
+                input_paths = inputs
             else:
                 document = _read_edge_graph(graph_path)
                 edges = document["edges"]
                 node_types = _node_types(document.get("nodes"))
-                input_paths = [table_path, graph_path]
+                input_paths = [graph_path]
             violations, skipped = property_violations(data, edges, node_types)
             payload = {
                 "command": "properties",
                 "counts": _relation_counts(edges),
                 "double_distribution": _double_distribution(violations),
                 "errors": [],
-                "inputs": _inputs(input_paths),
+                "inputs": _inputs(input_paths, table_input),
                 "ok": not violations,
                 "skipped": skipped,
                 "tool": "taxontoy",
@@ -2125,11 +2133,11 @@ def main(argv=None):
             if manifest:
                 built, inputs = _graph_from_manifest(manifest)
                 edges = built["edges"]
-                input_paths = [table_path, audit_path, *inputs]
+                input_paths = [audit_path, *inputs]
             else:
                 document = _read_edge_graph(graph_path)
                 edges = document["edges"]
-                input_paths = [table_path, audit_path, graph_path]
+                input_paths = [audit_path, graph_path]
             too_pins, too_skipped = _workflow_pin_records(data, edges)
             audit_pins, audit_skipped = _read_pin_audit(audit_path, source)
             diff = reconcile_pins(too_pins, audit_pins)
@@ -2139,7 +2147,7 @@ def main(argv=None):
                 "counts": {key: len(diff[key]) for key in ("different_sha", "only_pin_audit", "only_taxontoy", "same")},
                 "different_sha": diff["different_sha"],
                 "errors": [],
-                "inputs": _inputs(input_paths),
+                "inputs": _inputs(input_paths, table_input),
                 "ok": not differed,
                 "only_pin_audit": diff["only_pin_audit"],
                 "only_taxontoy": diff["only_taxontoy"],
@@ -2172,7 +2180,7 @@ def main(argv=None):
             payload = {
                 "command": "candidates",
                 "errors": sorted(set(report_errors)),
-                "inputs": _inputs([table_path, *graph_paths]),
+                "inputs": _inputs(graph_paths, table_input),
                 "ok": not report_errors,
                 "tool": "taxontoy",
                 "version": __version__,
@@ -2187,7 +2195,7 @@ def main(argv=None):
         payload = {
             "command": "coverage",
             "errors": cover_errors,
-            "inputs": _inputs([table_path, *graph_paths]),
+            "inputs": _inputs(graph_paths, table_input),
             "ok": not cover_errors,
             "onto": {"path": _display_path(marker), "sha256": _sha256(marker)},
             "tool": "taxontoy",
