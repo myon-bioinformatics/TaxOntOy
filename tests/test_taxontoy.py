@@ -1,4 +1,4 @@
-"""CLI tests for taxontoy. Paths are arguments; ONTO_CHECKOUT is the pinned checkout."""
+"""CLI tests for taxontoy. ONTO is ONTO_ROOT or a sibling checkout."""
 import hashlib
 import json
 import os
@@ -11,7 +11,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TABLE = ROOT / "otl-relations.json"
-ONTO = os.environ.get("ONTO_CHECKOUT")
 _COVER_DIR = Path(tempfile.mkdtemp(prefix="taxontoy-lines-"))
 if str(ROOT / "tests") not in sys.path:
     sys.path.insert(0, str(ROOT / "tests"))
@@ -22,7 +21,15 @@ import branchcov
 # An external coverage.py run sees only the children, because this hook replaces the tracer.
 branchcov.install()
 
+import onto_path
 import taxontoy
+
+
+def require_onto():
+    try:
+        return str(onto_path.resolve_root("ONTO", anchor=ROOT))
+    except onto_path.RootError as error:
+        raise AssertionError(str(error))
 
 
 _WRAPPER = """
@@ -33,6 +40,7 @@ spec = importlib.util.spec_from_file_location("branchcov", helper)
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 mod.install()
+sys.path.insert(0, str(Path(script).resolve().parent))
 sys.argv = [script, *sys.argv[4:]]
 status = 0
 try:
@@ -239,13 +247,11 @@ class CheckedInTableTests(unittest.TestCase):
 
 class CoverageTests(unittest.TestCase):
     def setUp(self):
-        if not ONTO:
-            self.fail("set ONTO_CHECKOUT to the pinned ONTO checkout")
-        self.onto = str(Path(ONTO).resolve())
+        self.onto = require_onto()
 
     def _cover(self, table, graphs, *extra):
         directory = Path(table).parent
-        args = ["coverage", str(table), "--onto", self.onto, "--format", "json", *extra]
+        args = ["coverage", str(table), "--onto-root", self.onto, "--format", "json", *extra]
         for wave, payload in graphs.items():
             path = write_json(directory, f"{wave}.json", payload)
             args.extend(["--graph", f"{wave}={path}"])
@@ -320,7 +326,7 @@ class CoverageTests(unittest.TestCase):
             tmp = Path(tmp)
             table = write_json(tmp, "table.json", minimal_table())
             graphs = fixture_graphs()
-            args = ["coverage", str(table), "--onto", self.onto, "--json"]
+            args = ["coverage", str(table), "--onto-root", self.onto, "--json"]
             for wave, payload in graphs.items():
                 path = write_json(tmp, f"{wave}.json", payload)
                 args.extend(["--graph", f"{wave}={path}"])
@@ -396,8 +402,13 @@ class CommittedReportTests(unittest.TestCase):
             {"detection": "same-pairs", "folded": False, "relations": ["duplicates", "overlapsWith"]},
             candidates,
         )
-        if ONTO:
-            digest = hashlib.sha256((Path(ONTO).resolve() / "knowledgegraph.py").read_bytes()).hexdigest()
+        self.assertEqual(payload["onto"]["path"], "ONTO/knowledgegraph.py")
+        try:
+            onto = onto_path.resolve_root("ONTO", anchor=ROOT)
+        except onto_path.RootError:
+            onto = None
+        if onto is not None:
+            digest = hashlib.sha256((onto / "knowledgegraph.py").read_bytes()).hexdigest()
             self.assertEqual(payload["onto"]["sha256"], digest)
 
     def test_committed_candidates_match_declared_properties(self):
@@ -595,9 +606,7 @@ class ValidateErrorTests(unittest.TestCase):
 
 class CoveragePathTests(unittest.TestCase):
     def setUp(self):
-        if not ONTO:
-            self.fail("set ONTO_CHECKOUT to the pinned ONTO checkout")
-        self.onto = str(Path(ONTO).resolve())
+        self.onto = require_onto()
 
     def _write_graphs(self, directory, graphs):
         args = []
@@ -619,7 +628,7 @@ class CoveragePathTests(unittest.TestCase):
         ])
         with tempfile.TemporaryDirectory() as tmp:
             table = write_json(tmp, "table.json", minimal_table())
-            args = ["coverage", str(table), "--onto", self.onto, "--format", "json", *self._write_graphs(tmp, graphs)]
+            args = ["coverage", str(table), "--onto-root", self.onto, "--format", "json", *self._write_graphs(tmp, graphs)]
             result = run(args)
         self.assertEqual(result.returncode, 1, result.stderr + result.stdout)
         self.assertNotIn("TypeError", result.stderr)
@@ -630,7 +639,7 @@ class CoveragePathTests(unittest.TestCase):
     def test_coverage_text_output_lists_waves_and_candidates(self):
         with tempfile.TemporaryDirectory() as tmp:
             table = write_json(tmp, "table.json", minimal_table())
-            args = ["coverage", str(table), "--onto", self.onto, "--format", "text", *self._write_graphs(tmp, fixture_graphs())]
+            args = ["coverage", str(table), "--onto-root", self.onto, "--format", "text", *self._write_graphs(tmp, fixture_graphs())]
             result = run(args)
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         self.assertIn("command coverage", result.stdout)
@@ -649,7 +658,7 @@ class CoveragePathTests(unittest.TestCase):
         graphs["concepts"]["edges"].append({"kind": "novel", "source": "p", "target": "q"})
         with tempfile.TemporaryDirectory() as tmp:
             path = write_json(tmp, "table.json", table)
-            args = ["coverage", str(path), "--onto", self.onto, "--format", "text", *self._write_graphs(tmp, graphs)]
+            args = ["coverage", str(path), "--onto-root", self.onto, "--format", "text", *self._write_graphs(tmp, graphs)]
             result = run(args)
         self.assertEqual(result.returncode, 1, result.stderr + result.stdout)
         self.assertIn("error stale audit: ghost", result.stdout)
@@ -657,60 +666,63 @@ class CoveragePathTests(unittest.TestCase):
         self.assertIn("stale ghost", result.stdout)
         self.assertIn("unclassified novel edges 1", result.stdout)
 
-    def test_paths_come_from_environment_variables(self):
+    def test_onto_root_supplies_the_checkout(self):
         with tempfile.TemporaryDirectory() as tmp:
             table = write_json(tmp, "table.json", minimal_table())
             graph_args = self._write_graphs(tmp, fixture_graphs())
             env = os.environ.copy()
-            env["TAXONTOY_TABLE"] = str(table)
-            env["ONTO_CHECKOUT"] = self.onto
-            result = run(["coverage", "--format", "json", *graph_args], env=env)
+            env["ONTO_ROOT"] = f"  {self.onto}  "
+            env.pop("ONTO_CHECKOUT", None)
+            env["TAXONTOY_TABLE"] = "/no/such/table.json"
+            result = run(["coverage", str(table), "--format", "json", *graph_args], env=env)
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         payload = json.loads(result.stdout)
         self.assertTrue(payload["ok"])
         self.assertTrue(payload["onto"]["path"].endswith("knowledgegraph.py"))
 
-    def test_missing_environment_paths_are_errors(self):
+    def test_validate_ignores_a_missing_onto_and_old_env_vars(self):
         env = os.environ.copy()
-        env.pop("TAXONTOY_TABLE", None)
+        env.pop("ONTO_ROOT", None)
         env.pop("ONTO_CHECKOUT", None)
+        env["TAXONTOY_TABLE"] = "/no/such/table.json"
         no_table = run(["validate", "--json"], env=env)
-        self.assertEqual(no_table.returncode, 1)
-        self.assertIn("pass the table path or set TAXONTOY_TABLE", no_table.stderr)
+        self.assertEqual(no_table.returncode, 0, no_table.stderr + no_table.stdout)
+        self.assertEqual(json.loads(no_table.stdout)["inputs"][0]["path"], "otl-relations.json")
 
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = Path(tmp) / "empty"
+            bad.mkdir()
+            table = write_json(tmp, "table.json", minimal_table())
+            graph_args = self._write_graphs(tmp, fixture_graphs())
+            env["ONTO_ROOT"] = str(bad)
+            no_onto = run(["coverage", str(table), "--format", "json", *graph_args], env=env)
+        self.assertEqual(no_onto.returncode, 1)
+        self.assertIn("ONTO_ROOT", no_onto.stderr)
+        self.assertNotIn("Traceback", no_onto.stderr)
+
+    def test_blank_onto_root_argument_does_not_fall_through(self):
+        env = os.environ.copy()
+        env["ONTO_ROOT"] = self.onto
         with tempfile.TemporaryDirectory() as tmp:
             table = write_json(tmp, "table.json", minimal_table())
             graph_args = self._write_graphs(tmp, fixture_graphs())
-            no_onto = run(["coverage", str(table), "--format", "json", *graph_args], env=env)
+            no_onto = run(
+                ["coverage", str(table), "--onto-root", "   ", "--format", "json", *graph_args],
+                env=env,
+            )
         self.assertEqual(no_onto.returncode, 1)
-        self.assertIn("pass --onto or set ONTO_CHECKOUT", no_onto.stderr)
-
-    def test_whitespace_only_environment_paths_are_errors(self):
-        env = os.environ.copy()
-        env["TAXONTOY_TABLE"] = "  \t  "
-        env["ONTO_CHECKOUT"] = self.onto
-        no_table = run(["validate", "--json"], env=env)
-        self.assertEqual(no_table.returncode, 1)
-        self.assertIn("pass the table path or set TAXONTOY_TABLE", no_table.stderr)
-
-        env = os.environ.copy()
-        env.pop("TAXONTOY_TABLE", None)
-        env["ONTO_CHECKOUT"] = "  \t  "
-        with tempfile.TemporaryDirectory() as tmp:
-            table = write_json(tmp, "table.json", minimal_table())
-            graph_args = self._write_graphs(tmp, fixture_graphs())
-            no_onto = run(["coverage", str(table), "--format", "json", *graph_args], env=env)
-        self.assertEqual(no_onto.returncode, 1)
-        self.assertIn("pass --onto or set ONTO_CHECKOUT", no_onto.stderr)
+        self.assertIn("ONTO_ROOT", no_onto.stderr)
+        self.assertNotIn(self.onto, no_onto.stderr)
+        self.assertNotIn("Traceback", no_onto.stderr)
 
     def test_padded_environment_paths_are_stripped(self):
         with tempfile.TemporaryDirectory() as tmp:
             table = write_json(tmp, "table.json", minimal_table())
             graph_args = self._write_graphs(tmp, fixture_graphs())
             env = os.environ.copy()
-            env["TAXONTOY_TABLE"] = f"  {table}  "
-            env["ONTO_CHECKOUT"] = f"  {self.onto}  "
-            result = run(["coverage", "--format", "json", *graph_args], env=env)
+            env["ONTO_ROOT"] = f"  {self.onto}  "
+            env.pop("ONTO_CHECKOUT", None)
+            result = run(["coverage", str(table), "--format", "json", *graph_args], env=env)
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         payload = json.loads(result.stdout)
         self.assertTrue(payload["ok"])
@@ -721,7 +733,7 @@ class CoveragePathTests(unittest.TestCase):
         del data["excluded"]
         with tempfile.TemporaryDirectory() as tmp:
             table = write_json(tmp, "table.json", data)
-            args = ["coverage", str(table), "--onto", self.onto, "--json", *self._write_graphs(tmp, fixture_graphs())]
+            args = ["coverage", str(table), "--onto-root", self.onto, "--json", *self._write_graphs(tmp, fixture_graphs())]
             result = run(args)
         self.assertEqual(result.returncode, 1, result.stderr + result.stdout)
         payload = json.loads(result.stdout)
@@ -740,7 +752,7 @@ class CoveragePathTests(unittest.TestCase):
                 written[wave] = write_json(tmp, f"{wave}.json", payload)
 
             def cover(*graph_args):
-                return run(["coverage", str(table), "--onto", self.onto, "--json", *graph_args])
+                return run(["coverage", str(table), "--onto-root", self.onto, "--json", *graph_args])
 
             bad_form = cover("--graph", "no-equals")
             self.assertEqual(bad_form.returncode, 1)
@@ -780,7 +792,7 @@ class CoveragePathTests(unittest.TestCase):
         graphs["audit"]["edges"].append({"source": "b", "relation": "dependsOn", "target": "a"})
         with tempfile.TemporaryDirectory() as tmp:
             table = write_json(tmp, "table.json", minimal_table())
-            result = run(["coverage", str(table), "--onto", self.onto, "--json", *self._write_graphs(tmp, graphs)])
+            result = run(["coverage", str(table), "--onto-root", self.onto, "--json", *self._write_graphs(tmp, graphs)])
         self.assertEqual(result.returncode, 1)
         self.assertIn("direction audit.dependsOn: forward relation is symmetric", result.stdout)
 
@@ -789,14 +801,24 @@ class CoveragePathTests(unittest.TestCase):
             tmp = Path(tmp)
             table = write_json(tmp, "table.json", minimal_table())
             graph_args = self._write_graphs(tmp, fixture_graphs())
-            missing = run(["coverage", str(table), "--onto", str(tmp), "--json", *graph_args])
+            missing = run(["coverage", str(table), "--onto-root", str(tmp), "--json", *graph_args])
             self.assertEqual(missing.returncode, 1)
-            self.assertIn("knowledgegraph.py is not in", missing.stderr)
+            self.assertIn("ONTO_ROOT", missing.stderr)
+            self.assertIn("knowledgegraph.py", missing.stderr)
+            self.assertNotIn("Traceback", missing.stderr)
 
             (tmp / "knowledgegraph.py").write_text("def other():\n    return None\n", encoding="utf-8")
-            incomplete = run(["coverage", str(table), "--onto", str(tmp), "--json", *graph_args])
+            incomplete = run(["coverage", str(table), "--onto-root", str(tmp), "--json", *graph_args])
             self.assertEqual(incomplete.returncode, 1)
             self.assertIn("has no relation_cycles", incomplete.stderr)
+            self.assertNotIn("Traceback", incomplete.stderr)
+
+            (tmp / "knowledgegraph.py").write_text("def (\n", encoding="utf-8")
+            broken = run(["coverage", str(table), "--onto-root", str(tmp), "--json", *graph_args])
+            self.assertEqual(broken.returncode, 1)
+            self.assertNotIn("Traceback", broken.stderr)
+            self.assertEqual(broken.stderr.count("\n"), 1)
+            self.assertIn("knowledgegraph.py", broken.stderr)
 
     def test_load_knowledgegraph_rejects_a_spec_without_a_loader(self):
         import importlib.util
@@ -813,6 +835,34 @@ class CoveragePathTests(unittest.TestCase):
             with mock.patch.object(importlib.util, "spec_from_file_location", return_value=spec):
                 with self.assertRaisesRegex(ValueError, "cannot load"):
                     taxontoy._load_knowledgegraph(directory)
+            (directory / "knowledgegraph.py").write_text("def (\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "knowledgegraph.py"):
+                taxontoy._load_knowledgegraph(directory)
+
+    def test_unmatched_exceptions_propagate(self):
+        import importlib.util
+        from unittest import mock
+
+        class Boom(BaseException):
+            pass
+
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "knowledgegraph.py").write_text("x = 1\n", encoding="utf-8")
+            with mock.patch.object(importlib.util, "spec_from_file_location", side_effect=Boom()):
+                with self.assertRaises(Boom):
+                    taxontoy._load_knowledgegraph(directory)
+            with mock.patch.object(onto_path, "bind", side_effect=Boom()):
+                with self.assertRaises(Boom):
+                    taxontoy._onto_root(directory)
+            with mock.patch.object(taxontoy.Path, "relative_to", side_effect=RuntimeError("nope")):
+                with self.assertRaises(RuntimeError):
+                    taxontoy._bundled("otl-relations.json")
+                with self.assertRaises(RuntimeError):
+                    taxontoy._display_path(directory)
+            with mock.patch.object(onto_path, "explicit_from_argv", side_effect=RuntimeError("nope")):
+                with self.assertRaises(RuntimeError):
+                    taxontoy.main(["validate", str(TABLE)])
 
     def test_alias_candidates_include_case_and_skip_empty_pair_sets(self):
         self.assertEqual(taxontoy._separator_key("_foo__bar-"), ("foo", "bar"))
@@ -1411,18 +1461,15 @@ class CandidateTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["inputs"][0]["path"], "otl-relations.json")
 
-    def test_blank_onto_argument_uses_the_environment(self):
-        if not ONTO:
-            self.fail("set ONTO_CHECKOUT to the pinned ONTO checkout")
+    def test_padded_graph_paths_are_stripped(self):
+        onto = require_onto()
         with tempfile.TemporaryDirectory() as tmp:
             table = write_json(tmp, "table.json", minimal_table())
-            args = ["coverage", str(table), "--onto", "   ", "--json"]
+            args = ["coverage", str(table), "--onto-root", onto, "--json"]
             for wave, payload in fixture_graphs().items():
                 path = write_json(tmp, f"{wave}.json", payload)
                 args.extend(["--graph", f"{wave}=  {path}  "])
-            env = os.environ.copy()
-            env["ONTO_CHECKOUT"] = str(Path(ONTO).resolve())
-            result = run(args, env=env)
+            result = run(args)
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
 
 
@@ -1673,20 +1720,19 @@ class RankUnclassifiedTests(unittest.TestCase):
             self.assertEqual(set(tmp.iterdir()), before | {out})
             self.assertEqual(json.loads(out.read_text(encoding="utf-8"))["profile"], "audit")
 
-    def test_table_can_come_from_the_environment(self):
+    def test_omitted_table_uses_the_bundled_file(self):
         with tempfile.TemporaryDirectory() as tmp:
-            table = write_json(tmp, "table.json", minimal_table())
             graph = write_json(tmp, "graph.json", {"edges": ranking_edges()})
             env = os.environ.copy()
-            env["TAXONTOY_TABLE"] = f"  {table}  "
+            env["TAXONTOY_TABLE"] = "/no/such/table.json"
             result = run([
                 "rank-unclassified", f"  {graph}  ", "--profile", "concepts", "--format", "json",
             ], env=env)
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         payload = json.loads(result.stdout)
         self.assertEqual(payload["profile"], "concepts")
-        self.assertEqual(payload["counts"]["classified"], 1)
-        self.assertEqual(payload["inputs"][0]["path"], str(graph))
+        self.assertTrue(any(item["path"].endswith("otl-relations.json") for item in payload["inputs"]))
+        self.assertTrue(any(item["path"] == str(graph) for item in payload["inputs"]))
 
     def test_bad_inputs_fail_without_writing(self):
         env = os.environ.copy()
@@ -1694,8 +1740,11 @@ class RankUnclassifiedTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             graph = write_json(tmp, "graph.json", {"edges": []})
             missing_table = run(["rank-unclassified", str(graph), "--profile", "audit"], env=env)
-            self.assertEqual(missing_table.returncode, 1)
-            self.assertIn("pass the table path or set TAXONTOY_TABLE", missing_table.stderr)
+            self.assertEqual(missing_table.returncode, 0, missing_table.stderr + missing_table.stdout)
+            self.assertTrue(any(
+                item["path"].endswith("otl-relations.json")
+                for item in json.loads(missing_table.stdout)["inputs"]
+            ))
 
             table = write_json(tmp, "table.json", minimal_table())
             blank = run(["rank-unclassified", "   ", str(table), "--profile", "audit"], env=env)
@@ -2429,25 +2478,25 @@ class RepoRelationTests(unittest.TestCase):
         self.assertIsNone(taxontoy._holder_path({"path": "pkg"}))
         self.assertFalse(taxontoy._paths_overlap("blue", "blueprobe"))
 
-    def test_cli_accepts_env_paths_and_rejects_conflicts(self):
+    def test_cli_defaults_bundled_files_and_rejects_conflicts(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             write_json(tmp, "heads.json", {"heads": {"hub/child": {"optional": {"subtree_prefix": "child"}}}})
             manifest = _write_manifest(tmp, [_source("hub", _SHA_A, "child-heads.json", "heads", "heads.json")])
             env = os.environ.copy()
-            env["TAXONTOY_MANIFEST"] = f"  {manifest}  "
-            env.pop("TAXONTOY_GRAPH", None)
-            from_env = run(["graph", "--format", "json"], env=env)
-            self.assertEqual(from_env.returncode, 0, from_env.stderr)
-            self.assertEqual(json.loads(from_env.stdout)["edges"][0]["target"], "hub/child")
-            missing = run(["graph"], env={**env, "TAXONTOY_MANIFEST": "   "})
-            self.assertEqual(missing.returncode, 1)
-            self.assertIn("TAXONTOY_MANIFEST", missing.stderr)
+            env["TAXONTOY_MANIFEST"] = "/no/such/manifest.json"
+            bundled = run(["graph", "--format", "json"], env=env)
+            explicit = run(["graph", "--manifest", "fixtures/repos/manifest.json", "--format", "json"], env=env)
+            self.assertEqual(bundled.returncode, 0, bundled.stderr)
+            self.assertEqual(bundled.stdout, explicit.stdout)
+            blank = run(["graph", "--manifest", "   ", "--format", "json"], env=env)
+            self.assertEqual(blank.stdout, bundled.stdout)
             out = tmp / "out.json"
             written = run(["graph", "--manifest", str(manifest), "--output", str(out)], env=env)
             self.assertEqual(written.returncode, 0)
             self.assertEqual(written.stdout, "")
             self.assertTrue(out.is_file())
+            self.assertEqual(json.loads(out.read_text(encoding="utf-8"))["edges"][0]["target"], "hub/child")
             conflict = run(["graph", "--manifest", str(manifest), "--json", "--format", "text"], env=env)
             self.assertEqual(conflict.returncode, 1)
             self.assertIn("disagree", conflict.stderr)
@@ -2458,25 +2507,27 @@ class RepoRelationTests(unittest.TestCase):
             table["excluded"]["repos"] = []
             table_path = write_json(tmp, "table.json", table)
             graph = write_json(tmp, "graph.json", {"edges": []})
-            env["TAXONTOY_TABLE"] = str(table_path)
-            env["TAXONTOY_GRAPH"] = f"  {graph}  "
-            env.pop("TAXONTOY_MANIFEST")
-            props = run(["properties", "--format", "json"], env=env)
+            env["TAXONTOY_GRAPH"] = "/no/such/graph.json"
+            env["TAXONTOY_TABLE"] = "/no/such/table.json"
+            props = run(["properties", str(table_path), "--graph", f"  {graph}  ", "--format", "json"], env=env)
             self.assertEqual(props.returncode, 0, props.stderr + props.stdout)
             self.assertEqual(json.loads(props.stdout)["counts"], {})
-            manifest_env = dict(env)
-            manifest_env.pop("TAXONTOY_GRAPH", None)
             from_manifest = run(
                 ["properties", str(table_path), "--manifest", str(manifest), "--format", "json"],
-                env=manifest_env,
+                env=env,
             )
             self.assertEqual(from_manifest.returncode, 0, from_manifest.stderr + from_manifest.stdout)
             self.assertEqual(json.loads(from_manifest.stdout)["counts"]["subtree"], 1)
             both = run(["properties", "--graph", str(graph), "--manifest", str(manifest)], env=env)
             self.assertEqual(both.returncode, 1)
             self.assertIn("pass --graph or --manifest", both.stderr)
-            neither = run(["properties", str(table_path)], env={**os.environ, "TAXONTOY_GRAPH": "", "TAXONTOY_MANIFEST": ""})
-            self.assertIn("pass --graph or --manifest", neither.stderr)
+            defaulted = run(["properties", str(table_path), "--format", "json"], env=env)
+            named = run(
+                ["properties", str(table_path), "--graph", "fixtures/repos/graph.json", "--format", "json"],
+                env=env,
+            )
+            self.assertEqual(defaulted.returncode, named.returncode, defaulted.stderr + named.stderr)
+            self.assertEqual(defaulted.stdout, named.stdout)
             bad_graph = write_json(tmp, "bad-graph.json", {"nodes": []})
             bad = run(["properties", str(table_path), "--graph", str(bad_graph)], env=env)
             self.assertIn("edges array", bad.stderr)
@@ -2894,8 +2945,8 @@ class RepoMutationTests(unittest.TestCase):
                 '"relations": [left_name, right_name],',
             ),
             (
-                'if not manifest:\n                raise ValueError("pass --manifest or set TAXONTOY_MANIFEST")',
-                'if False:\n                raise ValueError("pass --manifest or set TAXONTOY_MANIFEST")',
+                'return _bundled("fixtures/repos/manifest.json")',
+                'return _bundled("fixtures/repos/missing-manifest.json")',
             ),
             (
                 "if violations and args.strict:\n                return 2",
@@ -3031,10 +3082,11 @@ def _repo_snapshot(module, manifest, table, graph):
             code = module.main([
                 "properties", str(table), "--graph", str(sample), "--format", "text", "--strict",
             ])
-            try:
+        try:
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                 missing = module.main(["graph"])
-            except SystemExit as exc:
-                missing = exc.code if isinstance(exc.code, int) else 1
+        except SystemExit as exc:
+            missing = exc.code if isinstance(exc.code, int) else 1
         graph_text = io.StringIO()
         with redirect_stdout(graph_out), redirect_stderr(io.StringIO()):
             module.main(["graph", "--manifest", str(manifest), "--format", "json"])
@@ -3203,7 +3255,7 @@ class RelationV3Tests(unittest.TestCase):
         payload = json.loads(checked.stdout)
         self.assertEqual(payload["excluded"]["audit"], ["blocks", "depends_on", "observes", "overlapsWith"])
         graphs = {wave: body["edges"] for wave, body in fixture_graphs().items()}
-        waves, errors = taxontoy.cover_waves(table, graphs, taxontoy._load_knowledgegraph(ONTO))
+        waves, errors = taxontoy.cover_waves(table, graphs, taxontoy._load_knowledgegraph(require_onto()))
         self.assertEqual(errors, [])
         for body in waves.values():
             self.assertNotIn("edge_weight", body)
@@ -3291,7 +3343,7 @@ class RelationV3Tests(unittest.TestCase):
         table = _v3_table()
         graphs = {wave: list(body["edges"]) for wave, body in fixture_graphs().items()}
         graphs["audit"].append("not-an-edge")
-        waves, errors = taxontoy.cover_waves(table, graphs, taxontoy._load_knowledgegraph(ONTO), {})
+        waves, errors = taxontoy.cover_waves(table, graphs, taxontoy._load_knowledgegraph(require_onto()), {})
         self.assertTrue(any(error.startswith("malformed audit:") for error in errors))
         weight = waves["audit"]["edge_weight"]
         self.assertEqual(weight["classified"], 2)
@@ -3429,7 +3481,7 @@ class RelationV3Tests(unittest.TestCase):
         graphs["audit"]["edges"].append({"relation": "belongsTo", "source": "issue", "target": "repo"})
         with tempfile.TemporaryDirectory() as tmp:
             path = write_json(tmp, "table.json", table)
-            args = ["coverage", str(path), "--onto", ONTO, "--format", "text"]
+            args = ["coverage", str(path), "--onto-root", require_onto(), "--format", "text"]
             for wave, payload in graphs.items():
                 graph = write_json(tmp, f"{wave}.json", payload)
                 args.extend(["--graph", f"{wave}={graph}"])
@@ -3443,7 +3495,7 @@ class RelationV3Tests(unittest.TestCase):
             checked = run(["validate", str(path), "--format", "text"])
             self.assertIn("excluded audit depends_on alias alias_of dependsOn since 2026-11-21", checked.stdout)
             bare = fixture_graphs()
-            bare_args = ["coverage", str(path), "--onto", ONTO, "--format", "text"]
+            bare_args = ["coverage", str(path), "--onto-root", require_onto(), "--format", "text"]
             for wave, payload in bare.items():
                 graph = write_json(tmp, f"bare-{wave}.json", payload)
                 bare_args.extend(["--graph", f"{wave}={graph}"])
@@ -3644,26 +3696,27 @@ class RelationV3Tests(unittest.TestCase):
             self.assertEqual(written.stdout, "")
             self.assertEqual(out.read_text(encoding="utf-8"), first.stdout)
             env = os.environ.copy()
-            env["TAXONTOY_TABLE"] = str(table_path)
-            env["TAXONTOY_GRAPH"] = str(graph_path)
+            env["TAXONTOY_TABLE"] = "/no/such/table.json"
+            env["TAXONTOY_GRAPH"] = "/no/such/graph.json"
             env["TAXONTOY_PIN_AUDIT"] = str(audit_path)
             env["TAXONTOY_REPO"] = "example/app"
-            from_env = run(["reconcile", "--json"], env=env)
-            self.assertEqual(json.loads(from_env.stdout)["counts"], payload["counts"])
+            from_flags = run([
+                "reconcile", str(table_path), "--graph", str(graph_path),
+                "--pin-audit", str(audit_path), "--repo", "example/app", "--json",
+            ], env=env)
+            self.assertEqual(json.loads(from_flags.stdout)["counts"], payload["counts"])
             missing_audit = run(["reconcile", str(table_path), "--graph", str(graph_path)], env=os.environ.copy())
             self.assertEqual(missing_audit.returncode, 1)
-            self.assertIn("pass --pin-audit or set TAXONTOY_PIN_AUDIT", missing_audit.stderr)
+            self.assertIn("pass --pin-audit", missing_audit.stderr)
+            self.assertNotIn("TAXONTOY_PIN_AUDIT", missing_audit.stderr)
             both = run([
                 "reconcile", str(table_path), "--graph", str(graph_path),
                 "--manifest", str(graph_path), "--pin-audit", str(audit_path),
             ])
             self.assertIn("pass --graph or --manifest", both.stderr)
-            blank = os.environ.copy()
-            blank["TAXONTOY_PIN_AUDIT"] = "   "
-            blank["TAXONTOY_GRAPH"] = "   "
-            blank["TAXONTOY_MANIFEST"] = "   "
-            unset = run(["reconcile", str(table_path)], env=blank)
-            self.assertIn("pass --graph or --manifest", unset.stderr)
+            ignored = run(["reconcile", str(table_path), "--json"], env=env)
+            self.assertEqual(ignored.returncode, 1)
+            self.assertIn("pass --pin-audit", ignored.stderr)
             lone = {
                 "schema": "gh-identity-pin-audit/1",
                 "results": [{
@@ -3848,7 +3901,7 @@ class RelationV3Tests(unittest.TestCase):
             graphs = fixture_graphs()
             graphs["audit"]["nodes"] = [{"id": "a", "type": "PullRequest"}, {"id": "b", "type": "PullRequest"}, {"id": "c", "type": "PullRequest"}]
             graphs["audit"]["edges"].append({"relation": "belongsTo", "source": "a", "target": "gone"})
-            args = ["coverage", str(table_path), "--onto", ONTO, "--format", "text"]
+            args = ["coverage", str(table_path), "--onto-root", require_onto(), "--format", "text"]
             for wave, payload in graphs.items():
                 args.extend(["--graph", f"{wave}={write_json(tmp, f'{wave}.json', payload)}"])
             text = run(args)
@@ -4113,7 +4166,23 @@ class ZLineCoverageTests(unittest.TestCase):
             child_lines.update(lines)
             child_arcs.update(arcs)
         self.assertTrue(child_lines, "CLI subprocesses did not record executed lines")
-        source_path = ROOT / "taxontoy.py"
+        observed_arcs = branchcov.seen_arcs() | child_arcs
+        for source_path in (ROOT / "taxontoy.py", ROOT / "onto_path.py", ROOT / "conftest.py"):
+            self._partition(source_path, child_lines, observed_arcs)
+        guard_source = (ROOT / "taxontoy.py").read_text(encoding="utf-8")
+        guard = next(
+            number for number, line in enumerate(guard_source.splitlines(), start=1)
+            if line.startswith("if __name__")
+        )
+        self.assertIn(guard, branchcov.lines_for(child_lines, ROOT / "taxontoy.py"))
+        onto_lines = branchcov.lines_for(child_lines, ROOT / "onto_path.py")
+        resolve_line = next(
+            number for number, line in enumerate((ROOT / "onto_path.py").read_text(encoding="utf-8").splitlines(), start=1)
+            if line.startswith("def resolve_root")
+        )
+        self.assertIn(resolve_line, onto_lines)
+
+    def _partition(self, source_path, child_lines, observed_arcs):
         source = source_path.read_text(encoding="utf-8")
         total = len(source.splitlines())
         code = compile(source, str(source_path), "exec")
@@ -4128,44 +4197,42 @@ class ZLineCoverageTests(unittest.TestCase):
                     walk(const)
 
         walk(code)
-        seen = branchcov.seen_lines() | child_lines
+        seen = branchcov.seen_lines(source_path) | branchcov.lines_for(child_lines, source_path)
         executed = executable & seen
         excluded = set(range(1, total + 1)) - executable
         unexecuted = executable - seen
         self.assertEqual(len(executed) + len(excluded) + len(unexecuted), total)
+        label = source_path.name
         sys.stderr.write(
-            f"statement coverage executed={len(executed)} excluded={len(excluded)} "
+            f"{label} statement coverage executed={len(executed)} excluded={len(excluded)} "
             f"unexecuted={len(unexecuted)} total={total}\n"
         )
         if unexecuted:
             lines = source.splitlines()
             preview = "\n".join(f"{number}: {lines[number - 1]}" for number in sorted(unexecuted))
-            self.fail(f"unexecuted statements {len(unexecuted)}\n{preview}")
-        guard = next(number for number, line in enumerate(source.splitlines(), start=1) if line.startswith("if __name__"))
-        self.assertIn(guard, child_lines)
+            self.fail(f"{label} unexecuted statements {len(unexecuted)}\n{preview}")
 
         static = branchcov.static_branches(source_path)
-        observed = branchcov.seen_arcs() | child_arcs
         branch_total = sum(len(arcs) for arcs in static.values())
         branch_executed = 0
         branch_unexecuted = []
         for key, arcs in static.items():
             for src, dst in arcs:
-                if (key, src, dst) in observed:
+                if (key, src, dst) in observed_arcs:
                     branch_executed += 1
                 else:
                     branch_unexecuted.append((key, src, dst))
         branch_excluded = 0
         self.assertEqual(branch_executed + branch_excluded + len(branch_unexecuted), branch_total)
         sys.stderr.write(
-            f"branch coverage executed={branch_executed} excluded={branch_excluded} "
+            f"{label} branch coverage executed={branch_executed} excluded={branch_excluded} "
             f"unexecuted={len(branch_unexecuted)} total={branch_total}\n"
         )
         if branch_unexecuted:
             preview = "\n".join(
                 branchcov.explain(source_path, key, src, dst) for key, src, dst in branch_unexecuted
             )
-            self.fail(f"unexecuted branches {len(branch_unexecuted)}\n{preview}")
+            self.fail(f"{label} unexecuted branches {len(branch_unexecuted)}\n{preview}")
 
 
 if __name__ == "__main__":

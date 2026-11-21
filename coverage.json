@@ -21,11 +21,11 @@
   ],
   "ok": true,
   "onto": {
-    "path": "onto/knowledgegraph.py",
+    "path": "ONTO/knowledgegraph.py",
     "sha256": "3f9a7540d8bfb4917dd521b7d19a56a68699146e60af759cf67b0f7a3263683f"
   },
   "tool": "taxontoy",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "waves": {
     "audit": {
       "alias_candidates": [

@@ -1,6 +1,7 @@
 """Validate TaxOntOy's relation table, measure coverage, and rank unclassified names.
 
-Paths come from arguments or from TAXONTOY_TABLE, TAXONTOY_GRAPH, TAXONTOY_MANIFEST, and ONTO_CHECKOUT.
+The table, manifest, and repository graph default to the files beside this
+program. coverage resolves ONTO when it runs, and not before.
 """
 from __future__ import annotations
 
@@ -10,13 +11,14 @@ import datetime
 import hashlib
 import importlib.util
 import json
-import os
 import re
 import sys
 from collections import defaultdict
 from pathlib import Path
 
-__version__ = "0.5.0"
+import onto_path
+
+__version__ = "0.6.0"
 SCHEMA_V2 = "taxontoy-relations/2"
 SCHEMA_ID = "taxontoy-relations/3"
 ACCEPTED_SCHEMAS = (SCHEMA_V2, SCHEMA_ID)
@@ -669,18 +671,34 @@ def property_candidates(table, edges_by_name, node_types):
 
 
 def _load_knowledgegraph(directory):
+    """Load knowledgegraph.py from a resolved root. A broken file is one line."""
     path = Path(directory) / "knowledgegraph.py"
-    if not path.is_file():
-        raise ValueError(f"knowledgegraph.py is not in {directory}")
-    spec = importlib.util.spec_from_file_location("taxontoy_onto_knowledgegraph", path)
-    if spec is None or spec.loader is None:
-        raise ValueError(f"cannot load {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec = importlib.util.spec_from_file_location("taxontoy_onto_knowledgegraph", path)
+        if spec is None or spec.loader is None:
+            raise ValueError(f"cannot load {path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except ValueError:
+        raise
+    except Exception as error:
+        raise ValueError(f"{path}: {error}") from None
     for attr in ("relation_cycles", "topological_order"):
         if not callable(getattr(module, attr, None)):
             raise ValueError(f"{path} has no {attr}")
     return module
+
+
+def _onto_root(explicit):
+    """Resolve ONTO only for the command that imports it."""
+    chosen = None if explicit is None else {"ONTO": explicit}
+    try:
+        found = onto_path.bind(Path(__file__), chosen, names=("ONTO",))
+    except onto_path.RootError as error:
+        raise ValueError(str(error)) from None
+    except Exception as error:
+        raise ValueError(str(error)) from None
+    return found["ONTO"]
 
 
 def _symmetric(edges):
@@ -1648,11 +1666,22 @@ def _opt_path(value):
     return _clean(value)
 
 
-def _choice(args, name, env_name):
-    text = _opt_path(getattr(args, name, None))
-    if text:
-        return text
-    return _clean(os.environ.get(env_name))
+def _bundled(relative):
+    """A file shipped beside this program, relative to the working directory when it can be."""
+    path = Path(__file__).resolve().parent / relative
+    try:
+        shown = path.relative_to(Path.cwd().resolve())
+    except ValueError:
+        return str(path)
+    return shown.as_posix()
+
+
+def _display_path(path):
+    resolved = Path(path).resolve()
+    try:
+        return resolved.relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return resolved.as_posix()
 
 
 def _inputs(paths):
@@ -1843,23 +1872,30 @@ def _emit(text, output):
 
 
 def _table_path(args):
-    text = _clean(args.table)
+    text = _clean(getattr(args, "table", None))
     if text:
         return text
-    env = _clean(os.environ.get("TAXONTOY_TABLE"))
-    if env:
-        return env
-    raise ValueError("pass the table path or set TAXONTOY_TABLE")
+    return _bundled("otl-relations.json")
 
 
-def _onto_path(args):
-    text = _clean(args.onto)
+def _manifest_path(args):
+    text = _opt_path(getattr(args, "manifest", None))
     if text:
         return text
-    env = _clean(os.environ.get("ONTO_CHECKOUT"))
-    if env:
-        return env
-    raise ValueError("pass --onto or set ONTO_CHECKOUT")
+    return _bundled("fixtures/repos/manifest.json")
+
+
+def _graph_choice(args):
+    """Return (graph, manifest). Neither flag uses the bundled repository graph."""
+    graph_path = _opt_path(getattr(args, "graph", None))
+    manifest = _opt_path(getattr(args, "manifest", None))
+    if graph_path and manifest:
+        raise ValueError("pass --graph or --manifest")
+    if manifest:
+        return "", manifest
+    if graph_path:
+        return graph_path, ""
+    return _bundled("fixtures/repos/graph.json"), ""
 
 
 def _format(args):
@@ -1942,7 +1978,10 @@ def main(argv=None):
     cover = commands.add_parser("coverage", help="partition relation names in OTL graphs")
     cover.add_argument("table", nargs="?", type=Path)
     cover.add_argument("--graph", action="append", default=[], metavar="WAVE=PATH")
-    cover.add_argument("--onto", type=Path, help="ONTO checkout; overrides ONTO_CHECKOUT")
+    cover.add_argument(
+        "--onto-root", type=Path,
+        help="ONTO checkout (default: ONTO_ROOT, then a sibling or ancestor checkout)",
+    )
     cover.add_argument("--strict", action="store_true", help="exit 2 when coverage is not closed")
     _add_format(cover, "json")
 
@@ -1983,14 +2022,21 @@ def main(argv=None):
     reconcile.add_argument("--strict", action="store_true", help="exit 2 when the pin sets differ")
     _add_format(reconcile, "json")
 
+    if argv is None:
+        argv = sys.argv[1:]
+    else:
+        argv = list(argv)
+    try:
+        onto_path.explicit_from_argv(argv)
+    except onto_path.RootError as error:
+        print(f"taxontoy: {error}", file=sys.stderr)
+        return 1
     args = parser.parse_args(argv)
     try:
         fmt = _format(args)
         output = _clean(args.output) or None
         if args.command == "graph":
-            manifest = _choice(args, "manifest", "TAXONTOY_MANIFEST")
-            if not manifest:
-                raise ValueError("pass --manifest or set TAXONTOY_MANIFEST")
+            manifest = _manifest_path(args)
             built, inputs = _graph_from_manifest(manifest)
             payload = {
                 "command": "graph",
@@ -2041,10 +2087,7 @@ def main(argv=None):
             _emit(_render(payload, fmt), output)
             return 0
         if args.command == "properties":
-            graph_path = _choice(args, "graph", "TAXONTOY_GRAPH")
-            manifest = _choice(args, "manifest", "TAXONTOY_MANIFEST")
-            if bool(graph_path) == bool(manifest):
-                raise ValueError("pass --graph or --manifest")
+            graph_path, manifest = _graph_choice(args)
             if manifest:
                 built, inputs = _graph_from_manifest(manifest)
                 edges = built["edges"]
@@ -2073,14 +2116,11 @@ def main(argv=None):
                 return 2
             return 0 if payload["ok"] else 1
         if args.command == "reconcile":
-            graph_path = _choice(args, "graph", "TAXONTOY_GRAPH")
-            manifest = _choice(args, "manifest", "TAXONTOY_MANIFEST")
-            audit_path = _choice(args, "pin_audit", "TAXONTOY_PIN_AUDIT")
-            if bool(graph_path) == bool(manifest):
-                raise ValueError("pass --graph or --manifest")
+            graph_path, manifest = _graph_choice(args)
+            audit_path = _opt_path(getattr(args, "pin_audit", None))
             if not audit_path:
-                raise ValueError("pass --pin-audit or set TAXONTOY_PIN_AUDIT")
-            repository = _clean(getattr(args, "repo", None)) or _clean(os.environ.get("TAXONTOY_REPO"))
+                raise ValueError("pass --pin-audit")
+            repository = _clean(getattr(args, "repo", None))
             source = _endpoint(repository) if repository else ""
             if manifest:
                 built, inputs = _graph_from_manifest(manifest)
@@ -2140,15 +2180,16 @@ def main(argv=None):
             }
             _emit(_render(payload, fmt), output)
             return 0 if payload["ok"] else 1
-        onto = _onto_path(args)
-        knowledgegraph = _load_knowledgegraph(onto)
+        root = _onto_root(args.onto_root)
+        knowledgegraph = _load_knowledgegraph(root)
+        marker = root / "knowledgegraph.py"
         waves, cover_errors = cover_waves(data, graphs, knowledgegraph, types)
         payload = {
             "command": "coverage",
             "errors": cover_errors,
             "inputs": _inputs([table_path, *graph_paths]),
             "ok": not cover_errors,
-            "onto": {"path": f"{onto.rstrip('/')}/knowledgegraph.py", "sha256": _sha256(Path(onto) / "knowledgegraph.py")},
+            "onto": {"path": _display_path(marker), "sha256": _sha256(marker)},
             "tool": "taxontoy",
             "version": __version__,
             "waves": waves,
