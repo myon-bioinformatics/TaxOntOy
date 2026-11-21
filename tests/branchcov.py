@@ -17,7 +17,11 @@ _LINES = set()
 _ARCS = set()
 _PREV = {}
 _CONDS = {}
-_TARGET_SUFFIX = f"{os.sep}taxontoy.py"
+_TARGET_SUFFIXES = (
+    f"{os.sep}taxontoy.py",
+    f"{os.sep}onto_path.py",
+    f"{os.sep}conftest.py",
+)
 
 
 def _conditional(opname):
@@ -124,8 +128,11 @@ def explain(path, key, src, dst):
     return f"{key[0]}:{start}->{end} {preview} ({src}->{dst})"
 
 
-def seen_lines():
-    return set(_LINES)
+def seen_lines(path=None):
+    if path is None:
+        return {lineno for _name, lineno in _LINES}
+    name = Path(path).name
+    return {lineno for filename, lineno in _LINES if str(filename).endswith(name)}
 
 
 def seen_arcs():
@@ -134,11 +141,11 @@ def seen_arcs():
 
 def _hook(frame, event, arg):
     code = frame.f_code
-    if not code.co_filename.endswith(_TARGET_SUFFIX):
+    if not code.co_filename.endswith(_TARGET_SUFFIXES):
         return _hook
     frame.f_trace_opcodes = True
     if event == "line":
-        _LINES.add(frame.f_lineno)
+        _LINES.add((code.co_filename, frame.f_lineno))
     elif event == "opcode":
         offset = frame.f_lasti
         conds = _CONDS.get(id(code))
@@ -165,13 +172,19 @@ def dump():
         [key[0], key[1], key[2], src, dst]
         for key, src, dst in sorted(_ARCS, key=lambda item: (item[0], item[1], item[2]))
     ]
-    return json.dumps({"arcs": arcs, "lines": sorted(_LINES)}, separators=(",", ":"))
+    lines = [[filename, lineno] for filename, lineno in sorted(_LINES)]
+    return json.dumps({"arcs": arcs, "lines": lines}, separators=(",", ":"))
 
 
 def load(text):
     payload = json.loads(text)
-    lines = set(payload["lines"])
+    lines = {(filename, lineno) for filename, lineno in payload["lines"]}
     arcs = set()
     for qualname, first, digest, src, dst in payload["arcs"]:
         arcs.add(((qualname, first, digest), src, dst))
     return lines, arcs
+
+
+def lines_for(pairs, path):
+    name = Path(path).name
+    return {lineno for filename, lineno in pairs if str(filename).endswith(name)}

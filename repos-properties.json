@@ -14,7 +14,7 @@
   "inputs": [
     {
       "path": "fixtures/repos/graph.json",
-      "sha256": "055345a7ec5024300663adba46b1431daded75b21f585d1d4400da3cf8c2eb40"
+      "sha256": "631f8d8d920d1d38f3433792364e1cba6d67691d5185e6df1a135c668d0265cf"
     },
     {
       "path": "otl-relations.json",
@@ -24,6 +24,6 @@
   "ok": true,
   "skipped": 0,
   "tool": "taxontoy",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "violations": []
 }

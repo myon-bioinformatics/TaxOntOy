@@ -8,6 +8,8 @@ jobs:
     strategy:
       matrix:
         python: ['3.11', '3.15']
+    env:
+      ONTO_ROOT: ${{ github.workspace }}/ONTO
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -17,7 +19,7 @@ jobs:
           repository: myon-bioinformatics/ONTO
           # First-parent merge of pull request #6 on main.
           ref: 8ca1ee5dc8c2714ddcdea6db6774f7168c0e617b
-          path: onto
+          path: ONTO
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -31,13 +33,8 @@ jobs:
           version: latest
           python-version: ${{ matrix.python }}
       - name: Test
-        env:
-          ONTO_CHECKOUT: onto
         run: uv run --no-project python -S -m unittest discover -s tests -v
       - name: Regenerate coverage and fail on drift
-        env:
-          ONTO_CHECKOUT: onto
-          PYTHONPATH: otl
         run: |
           mkdir -p build
           cat > "$RUNNER_TEMP/canonicalize_graphs.py" << 'PY'
@@ -60,6 +57,7 @@ jobs:
                   raise SystemExit(result.returncode)
               return json.loads(result.stdout)
 
+          sys.path.insert(0, "otl")
           canonical(capture([sys.executable, "-S", "otl/gh_audit/gh_audit.py", "audit", "otl/examples/audit-20261114.json"]), "build/audit.json")
           from ontautology import concept_edges
           corpus = json.loads(Path("otl/examples/concepts-20261115.json").read_text(encoding="utf-8"))
@@ -67,15 +65,14 @@ jobs:
           canonical(capture([sys.executable, "-S", "otl/tools/tautology.py", "cases", "otl/examples/concepts-20261115.json", "--graph"]), "build/cases.json")
           PY
           uv run --no-project python -S "$RUNNER_TEMP/canonicalize_graphs.py"
-          uv run --no-project python -S taxontoy.py coverage otl-relations.json \
+          uv run --no-project python -S taxontoy.py coverage \
             --graph audit=build/audit.json \
             --graph concepts=build/concepts.json \
             --graph cases=build/cases.json \
-            --onto "$ONTO_CHECKOUT" \
             --format json \
             --output build/coverage.json
           diff -u coverage.json build/coverage.json
-          uv run --no-project python -S taxontoy.py candidates otl-relations.json \
+          uv run --no-project python -S taxontoy.py candidates \
             --graph audit=build/audit.json \
             --graph concepts=build/concepts.json \
             --graph cases=build/cases.json \
@@ -83,19 +80,39 @@ jobs:
             --output build/candidates.json
           diff -u candidates.json build/candidates.json
           uv run --no-project python -S taxontoy.py graph \
-            --manifest fixtures/repos/manifest.json \
             --format json \
             --output build/repos-graph.json
           diff -u fixtures/repos/graph.json build/repos-graph.json
-          uv run --no-project python -S taxontoy.py properties otl-relations.json \
-            --graph fixtures/repos/graph.json \
+          uv run --no-project python -S taxontoy.py properties \
             --format json \
             --output build/repos-properties.json
           diff -u repos-properties.json build/repos-properties.json
           for profile in audit concepts cases; do
-            uv run --no-project python -S taxontoy.py rank-unclassified "build/${profile}.json" otl-relations.json \
+            uv run --no-project python -S taxontoy.py rank-unclassified "build/${profile}.json" \
               --profile "$profile" \
               --format json \
               --output "build/ranking-${profile}.json"
             diff -u "ranking-${profile}.json" "build/ranking-${profile}.json"
           done
+      - name: Inference finds ONTO with no env vars
+        run: |
+          set -euo pipefail
+          unset ONTO_ROOT ONTO_CHECKOUT TAXONTOY_TABLE TAXONTOY_GRAPH TAXONTOY_MANIFEST TAXONTOY_PIN_AUDIT TAXONTOY_REPO PYTHONPATH
+          uv run --no-project python -S taxontoy.py validate --format json > "$RUNNER_TEMP/inferred-validate.json"
+          uv run --no-project python -S - "$RUNNER_TEMP/inferred-validate.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert report["ok"] is True
+          assert report["inputs"] == [{"path": "otl-relations.json", "sha256": report["inputs"][0]["sha256"]}]
+          assert report["command"] == "validate"
+          PY
+          uv run --no-project python -S taxontoy.py coverage \
+            --graph audit=build/audit.json \
+            --graph concepts=build/concepts.json \
+            --graph cases=build/cases.json \
+            --format json \
+            --output "$RUNNER_TEMP/inferred-coverage.json"
+          diff -u coverage.json "$RUNNER_TEMP/inferred-coverage.json"
+          uv run --no-project python -S -m unittest discover -s tests -q

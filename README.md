@@ -44,7 +44,7 @@
 
 `subtree` と `vendor` は `disjoint_with` です。`source` が同じで `path` が一致する、または一方が他方のディレクトリ接頭辞であるとき、同じファイルとリポジトリの組を二通りに配っています。`taxontoy properties` は違反と、その辺を報告します。違反が無いときの終了コードは 0、あるときは 1、`--strict` のときは 2 です。
 
-リポジトリの関係は、既存の OTL グラフ JSON（`nodes` と `edges`、関係名は `kind` または `relation`）で表します。記録から辺を作る `taxontoy graph --manifest` は、マニフェストに書いたファイルだけを読みます。`TAXONTOY_MANIFEST` と `TAXONTOY_GRAPH` もパスになります。
+リポジトリの関係は、既存の OTL グラフ JSON（`nodes` と `edges`、関係名は `kind` または `relation`）で表します。記録から辺を作る `taxontoy graph` は、マニフェストに書いたファイルだけを読みます。マニフェストを省くと `fixtures/repos/manifest.json` を使います。
 
 実データは Aoi `320126983a992e30730350c5e9b0e4051c0d33d4`、TopOntoLogy `7c0823b4e9c7ec541d1a1f14c77ac85b72b83cb3`、OnTautoLogy `1909829db345870361ad5c6368bdf2adc199459c` です。この範囲の二重配布は 0 件です。出典は [fixtures/repos/manifest.json](fixtures/repos/manifest.json) に repo、commit、path で残しています。
 
@@ -58,13 +58,13 @@
 
 `taxontoy properties` は `disjoint_with` に加え、`domain` と `range` の外にある辺を違反として返します。違反が無いときの終了コードは 0、あるときは 1、`--strict` のときは 2 です。
 
-`taxontoy reconcile` は、`repos` の `workflow-pin` 辺と、gh_identity の `pin-audit` が書いた `gh-identity-pin-audit/1` の JSON を集合として比べます。TOO は GitHub も gh_identity も呼びません。監査ファイルは `--pin-audit` か `TAXONTOY_PIN_AUDIT` です。`--repo`（または `TAXONTOY_REPO`）はその監査が対象にした workflow のあるリポジトリです。ピンは source、workflow の path、固定先、SHA で一意です。SHA とリポジトリ名は小文字に揃えます。同じ source、path、固定先で SHA だけが違う組は `different_sha` です。片方にしか無いピンは `only_taxontoy` と `only_pin_audit` です。SHA まで同じ組は `same` です。名前を伏せた `unavailable` は件数だけを `skipped` に入れ、リポジトリ名は出しません。差が無いときは 0、あるときは 1、`--strict` のときは 2 です。
+`taxontoy reconcile` は、`repos` の `workflow-pin` 辺と、gh_identity の `pin-audit` が書いた `gh-identity-pin-audit/1` の JSON を集合として比べます。TOO は GitHub も gh_identity も呼びません。監査ファイルは `--pin-audit` です。`--repo` はその監査が対象にした workflow のあるリポジトリです。ピンは source、workflow の path、固定先、SHA で一意です。SHA とリポジトリ名は小文字に揃えます。同じ source、path、固定先で SHA だけが違う組は `different_sha` です。片方にしか無いピンは `only_taxontoy` と `only_pin_audit` です。SHA まで同じ組は `same` です。名前を伏せた `unavailable` は件数だけを `skipped` に入れ、リポジトリ名は出しません。差が無いときは 0、あるときは 1、`--strict` のときは 2 です。
 
-辺の関係名は `kind` があればそれ、無ければ `relation` です。入力パスは引数か環境変数だけです。`TAXONTOY_TABLE` は表のパス、`ONTO_CHECKOUT` は ONTO の checkout です。`--onto` を付けるとその checkout を使います。循環検出とトポロジカル順は、その checkout の `knowledgegraph.py` をそのまま呼びます。報告に載るのは非循環かどうかと、サンプル閉路の件数だけです。ノード ID は出しません。
+辺の関係名は `kind` があればそれ、無ければ `relation` です。表を省くと、このプログラムの隣にある `otl-relations.json` を使います。`properties` と `reconcile` でグラフもマニフェストも省くと `fixtures/repos/graph.json` を使います。循環検出とトポロジカル順は ONTO の `knowledgegraph.py` を、`coverage` のときだけ呼びます。ONTO の場所は `--onto-root`、環境変数 `ONTO_ROOT`、隣の `../ONTO`、そこから上へ辿った checkout の順です。マーカー `knowledgegraph.py` があるディレクトリだけを checkout とみなします。見つからないときは、設定する環境変数の名前を含む日本語のエラーで止まります。`--onto-root` に空白だけを渡すと、そこでは止め、`ONTO_ROOT` には落ちません。`ONTO_ROOT` が空白だけなら未設定として推定に進みます。`validate` や `--help` など ONTO を使わないコマンドは、checkout が無くても動きます。報告に載るのは非循環かどうかと、サンプル閉路の件数だけです。ノード ID は出しません。
 
 監査グラフは同じ端点に別名の辺も足します。`taxontoy coverage` は辺数を名前ごとに数え、`depends_on` を `dependsOn` に足しません。`taxontoy candidates` は畳まずに候補だけを出します。区切りの違い（`dependsOn` / `depends_on` / `depends-on`）、大文字小文字の違い、逆向きが常に対になる組、辺が常に逆向きにもある関係、端点の種類が二つ以上に割れる関係です。ノードに `type` が無いグラフでは多義の検出を省き、その旨を書きます。宣言と一致する候補には `declared` を付けますが、分類には使いません。`alias` の除外は、同じ端点・区切り・大文字小文字の候補を宣言済みにします。辺は足しません。
 
-パスの前後の空白は除きます。空白だけなら、その引数や環境変数は未設定です。
+パスの前後の空白は除きます。空白だけの引数は、その引数が未設定です。
 
 ## 未分類の順位
 
@@ -74,9 +74,10 @@
 
 別名の候補は、大文字小文字、区切り（`dependsOn` と `depends_on`）、端点がちょうど逆向きの組です。候補は順位の横に出すだけで、辺は足しません。分類済みの名前も候補に出ます。別の弾で分類済みの名前は `elsewhere` にその弾を書きます。
 
+以前は表のパスと `--onto`、テストでは `ONTO_CHECKOUT` が要りました。
+
 ```sh
 python -S taxontoy.py validate otl-relations.json
-python -S taxontoy.py validate otl-relations.json --json
 python -S taxontoy.py coverage otl-relations.json \
   --graph audit=build/audit.json \
   --graph concepts=build/concepts.json \
@@ -95,11 +96,34 @@ python -S taxontoy.py graph --manifest fixtures/repos/manifest.json --format jso
 python -S taxontoy.py properties otl-relations.json \
   --graph fixtures/repos/graph.json \
   --format json
-python -S taxontoy.py reconcile otl-relations.json \
-  --graph fixtures/repos/graph.json \
+ONTO_CHECKOUT=../ONTO uv run --no-project python -S -m unittest discover -s tests -v
+```
+
+今は表とマニフェストとリポジトリグラフを省けます。ONTO は `coverage` が推定します。
+
+```sh
+python -S taxontoy.py validate
+python -S taxontoy.py validate --json
+python -S taxontoy.py coverage \
+  --graph audit=build/audit.json \
+  --graph concepts=build/concepts.json \
+  --graph cases=build/cases.json \
+  --format json
+python -S taxontoy.py candidates \
+  --graph audit=build/audit.json \
+  --graph concepts=build/concepts.json \
+  --graph cases=build/cases.json \
+  --format json
+python -S taxontoy.py rank-unclassified build/audit.json \
+  --profile audit \
+  --format json
+python -S taxontoy.py graph --format json
+python -S taxontoy.py properties --format json
+python -S taxontoy.py reconcile \
   --pin-audit pin-audit.json \
   --repo owner/name \
   --format json
+uv run --no-project python -S -m unittest discover -s tests -v
 ```
 
 `--json` は `--format json` の省略です。両方を矛盾させて渡すと失敗します。`validate` の既定は text、`coverage` と `candidates` と `rank-unclassified` の既定は json です。報告にはツールの版、入力パス、各ファイルの sha256 が入ります。標準出力か `--output` で指定したファイル以外には書きません。表が壊れている、被覆が閉じていないときは終了コード 1、`--strict` のとき被覆の失敗は 2 です。順位の報告は、表を読めれば未分類や名前の無い辺があっても 0 です。
@@ -111,5 +135,5 @@ python -S taxontoy.py reconcile otl-relations.json \
 Python 3.11 以降です。依存パッケージはありません。`since` は ASCII の `YYYY-MM-DD` だけです。テストは次です。テスト自身が行の実行を数えるため、プロセス内にトレーサを置きます。別のカバレッジ計測を同じプロセスに重ねると、プロセス内の行が数え漏れます。
 
 ```sh
-ONTO_CHECKOUT=../ONTO uv run --no-project python -S -m unittest discover -s tests -v
+uv run --no-project python -S -m unittest discover -s tests -v
 ```
