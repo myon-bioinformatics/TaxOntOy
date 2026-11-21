@@ -16,12 +16,18 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-__version__ = "0.4.0"
-SCHEMA_ID = "taxontoy-relations/2"
+__version__ = "0.5.0"
+SCHEMA_V2 = "taxontoy-relations/2"
+SCHEMA_ID = "taxontoy-relations/3"
+ACCEPTED_SCHEMAS = (SCHEMA_V2, SCHEMA_ID)
+EXCLUSION_KINDS = ("alias", "out_of_scope")
 WAVES = ("audit", "concepts", "cases")
 REPO_PROFILE = "repos"
+WORKFLOW_PIN = "workflow-pin"
+PIN_AUDIT_SCHEMA = "gh-identity-pin-audit/1"
 TOP_KEYS = {"schema", *WAVES, "direction", "excluded", "properties"}
 ALLOWED_KEYS = TOP_KEYS | {REPO_PROFILE}
+TYPE_KEYS = ("domain", "range")
 _SHA = re.compile(r"[0-9a-f]{40}")
 _OWNER = re.compile(r"[A-Za-z0-9_.-]+")
 _USES_RE = re.compile(
@@ -113,6 +119,68 @@ def _iso_date(value):
     return True
 
 
+def _is_v3(data):
+    return isinstance(data, dict) and data.get("schema") == SCHEMA_ID
+
+
+def _since_reason(obj, where, errors):
+    """Check since and reason on a declaration that may carry other fields."""
+    payload = {}
+    if "since" in obj:
+        payload["since"] = obj["since"]
+    if "reason" in obj:
+        payload["reason"] = obj["reason"]
+    _evidence(payload, where, errors, partner=False)
+
+
+def _excluded_names(table, profile):
+    """Relation names excluded from one profile. Version 2 stores strings; version 3 stores objects."""
+    values = table["excluded"][profile]
+    if _is_v3(table):
+        return [item["relation"] for item in values]
+    return list(values)
+
+
+def _alias_target(table, relation):
+    """Canonical relation when ``relation`` is excluded as an alias. Version 2 has none."""
+    if not _is_v3(table):
+        return None
+    excluded = table.get("excluded")
+    if not isinstance(excluded, dict):
+        return None
+    for wave in _profile_names(table):
+        values = excluded.get(wave)
+        if not isinstance(values, list):
+            continue
+        for item in values:
+            if not isinstance(item, dict) or item.get("relation") != relation or item.get("kind") != "alias":
+                continue
+            target = item.get("alias_of")
+            if _name_ok(target):
+                return target
+    return None
+
+
+def _type_declarations(table):
+    """domain and range type lists declared on relations."""
+    props = table.get("properties") if isinstance(table, dict) else None
+    relations = props.get("relations") if isinstance(props, dict) else None
+    found = {}
+    if not isinstance(relations, dict):
+        return found
+    for name, body in relations.items():
+        if not isinstance(body, dict):
+            continue
+        declared = {}
+        for key in TYPE_KEYS:
+            item = body.get(key)
+            if isinstance(item, dict) and isinstance(item.get("types"), list):
+                declared[key] = list(item["types"])
+        if declared:
+            found[name] = declared
+    return found
+
+
 def _evidence(obj, where, errors, *, partner):
     """Check since/reason, and a partner relation when partner is true."""
     if not isinstance(obj, dict):
@@ -137,6 +205,33 @@ def _evidence(obj, where, errors, *, partner):
         errors.append(f"{where}: missing relation")
         return None
     return relation
+
+
+def _unsorted_names(names):
+    """True when names are not sorted unique strings. A non-string makes the list unhashable."""
+    for name in names:
+        if not isinstance(name, str):
+            return True
+    return names != sorted(set(names))
+
+
+def _validate_types(obj, where, errors):
+    """Optional domain or range: a sorted list of node types, with since and reason."""
+    if not isinstance(obj, dict):
+        errors.append(f"{where}: must be an object")
+        return
+    for key in sorted(set(obj) - {"types", "since", "reason"}):
+        errors.append(f"{where}: unknown field {key}")
+    types = obj.get("types")
+    if not isinstance(types, list) or not types:
+        errors.append(f"{where}: types must be a non-empty array")
+    elif _unsorted_names(types):
+        errors.append(f"{where}: types must be sorted and unique")
+    else:
+        for name in types:
+            if not _name_ok(name):
+                errors.append(f"{where}: types must be non-empty strings")
+    _since_reason(obj, where, errors)
 
 
 def _validate_properties(data, classified, errors):
@@ -166,7 +261,15 @@ def _validate_properties(data, classified, errors):
     if isinstance(excluded, dict):
         for wave in _profile_names(data):
             values = excluded.get(wave)
-            if isinstance(values, list):
+            if not isinstance(values, list):
+                continue
+            if _is_v3(data):
+                known.update(
+                    item["relation"]
+                    for item in values
+                    if isinstance(item, dict) and _name_ok(item.get("relation"))
+                )
+            else:
                 known.update(name for name in values if _name_ok(name))
     class_flags = {}
     for name, body in classes.items():
@@ -197,6 +300,9 @@ def _validate_properties(data, classified, errors):
             continue
         flags = set()
         for key in sorted(body):
+            if key in TYPE_KEYS:
+                _validate_types(body[key], f"{where}.{key}", errors)
+                continue
             if key not in RELATION_FLAGS:
                 errors.append(f"{where}: unknown property {key}")
                 continue
@@ -252,7 +358,13 @@ def _property_rows(data):
         for name in sorted(props[scope]):
             body = props[scope][name]
             for key in sorted(body):
-                if key == "disjoint_with":
+                if key in TYPE_KEYS:
+                    item = body[key]
+                    rows.append({
+                        "name": name, "property": key, "reason": item["reason"],
+                        "scope": label, "since": item["since"], "types": list(item["types"]),
+                    })
+                elif key == "disjoint_with":
                     for item in body[key]:
                         rows.append({
                             "name": name, "property": key, "reason": item["reason"],
@@ -284,8 +396,8 @@ def validate_document(data):
         errors.append(f"missing key: {key}")
     for key in extra:
         errors.append(f"unknown key: {key}")
-    if data.get("schema") != SCHEMA_ID:
-        errors.append(f"schema: expected {SCHEMA_ID}")
+    if data.get("schema") not in ACCEPTED_SCHEMAS:
+        errors.append(f"schema: expected {SCHEMA_V2} or {SCHEMA_ID}")
 
     classified = {}
     profiles = _profile_names(data)
@@ -340,7 +452,10 @@ def validate_document(data):
         if not isinstance(names, list):
             errors.append(f"excluded.{wave}: must be an array")
             continue
-        if names != sorted(set(names)):
+        if _is_v3(data):
+            _validate_excluded_v3(names, wave, data, classified, errors)
+            continue
+        if _unsorted_names(names):
             errors.append(f"excluded.{wave}: must be sorted and unique")
         mapping = data.get(wave) if isinstance(data.get(wave), dict) else {}
         for name in names:
@@ -350,6 +465,45 @@ def validate_document(data):
                 errors.append(f"{wave}: {name} is both classified and excluded")
     _validate_properties(data, classified, errors)
     return sorted(set(errors))
+
+
+def _validate_excluded_v3(entries, wave, data, classified, errors):
+    """Version 3 exclusions are objects with since, reason, and kind."""
+    seen = []
+    mapping = data.get(wave) if isinstance(data.get(wave), dict) else {}
+    for index, item in enumerate(entries):
+        where = f"excluded.{wave}[{index}]"
+        if not isinstance(item, dict):
+            errors.append(f"{where}: must be an object")
+            continue
+        for key in sorted(set(item) - {"alias_of", "kind", "reason", "relation", "since"}):
+            errors.append(f"{where}: unknown field {key}")
+        relation = item.get("relation")
+        if not _name_ok(relation):
+            errors.append(f"{where}: missing relation")
+            relation = None
+        else:
+            seen.append(relation)
+            if relation in mapping:
+                errors.append(f"{wave}: {relation} is both classified and excluded")
+        kind = item.get("kind")
+        if kind not in EXCLUSION_KINDS:
+            errors.append(f"{where}: kind must be out_of_scope or alias")
+        _since_reason(item, where, errors)
+        if kind == "alias":
+            alias_of = item.get("alias_of")
+            if not _name_ok(alias_of):
+                errors.append(f"{where}: missing alias_of")
+            elif alias_of == relation:
+                errors.append(f"{where}: alias_of itself")
+            elif alias_of not in classified:
+                errors.append(f"{where}: alias_of unknown relation {alias_of}")
+            elif classified[alias_of][0] != wave:
+                errors.append(f"{where}: alias_of is classified in {classified[alias_of][0]}")
+        elif "alias_of" in item:
+            errors.append(f"{where}: alias_of is only for alias")
+    if seen != sorted(set(seen)):
+        errors.append(f"excluded.{wave}: must be sorted and unique")
 
 
 def _relation_name(edge):
@@ -463,10 +617,17 @@ def property_candidates(table, edges_by_name, node_types):
     found = []
     for item in _alias_candidates(edges_by_name):
         declared = False
+        relations = item["relations"]
         if item["detection"] == "inverse-pair":
-            left, right = item["relations"]
+            left, right = relations
             declared = _inverse_partner(table, left) == right and _inverse_partner(table, right) == left
-        row = {"declared": declared, "detection": item["detection"], "folded": False, "relations": item["relations"]}
+        else:
+            for name in relations:
+                target = _alias_target(table, name)
+                if target in relations and target != name:
+                    declared = True
+                    break
+        row = {"declared": declared, "detection": item["detection"], "folded": False, "relations": relations}
         found.append(row)
     for name in sorted(edges_by_name):
         edges = edges_by_name[name]
@@ -532,10 +693,101 @@ def _forward_conflict(edges):
     return bool(pairs) and _symmetric(edges) and any(source != target for source, target in pairs)
 
 
-def cover_waves(table, graphs, knowledgegraph):
+def _edge_weight(grouped, classified_present, excluded_present, unclassified, malformed):
+    """Classified edges over every edge in the wave. The ratio is exact, not a float."""
+    classified_edges = sum(len(grouped[name]) for name in classified_present)
+    excluded_edges = sum(len(grouped[name]) for name in excluded_present)
+    unclassified_edges = sum(len(grouped[name]) for name in unclassified)
+    total = classified_edges + excluded_edges + unclassified_edges + malformed
+    return {
+        "classified": classified_edges,
+        "classified_ratio": {"denominator": total, "numerator": classified_edges},
+        "excluded": excluded_edges,
+        "total": total,
+        "unclassified": unclassified_edges,
+    }
+
+
+def _pair_inside(declared, source, target):
+    """True when both endpoint types are known and each declared side contains its type."""
+    if not source or not target:
+        return False
+    if "domain" in declared and source not in declared["domain"]:
+        return False
+    if "range" in declared and target not in declared["range"]:
+        return False
+    return True
+
+
+def _declared_pairs(declared, observed):
+    """Pairs the declaration allows. An open side uses the types actually seen."""
+    if "domain" in declared and "range" in declared:
+        return {(source, target) for source in declared["domain"] for target in declared["range"]}
+    if "domain" in declared:
+        targets = {target for _source, target in observed} or {None}
+        return {(source, target) for source in declared["domain"] for target in targets}
+    sources = {source for source, _target in observed} or {None}
+    return {(source, target) for target in declared["range"] for source in sources}
+
+
+def _type_gaps(table, grouped, node_types, mapping, excluded_names, graph_names):
+    """Declared domain/range against the (source type, target type) pairs actually seen."""
+    declarations = _type_declarations(table)
+    relevant = [
+        name for name in sorted(declarations)
+        if name in mapping or name in excluded_names or name in graph_names
+    ]
+    if not relevant:
+        return None
+    relations = {}
+    if not node_types:
+        for name in relevant:
+            relations[name] = {"declared": declarations[name]}
+        return {"note": "types: skipped; nodes have no type", "relations": relations}
+    for name in relevant:
+        declared = declarations[name]
+        counts = defaultdict(int)
+        for edge in grouped.get(name, ()):
+            source = node_types.get(edge["source"])
+            target = node_types.get(edge["target"])
+            counts[(source, target)] += 1
+        actual = [
+            {"edges": count, "source": source, "target": target}
+            for (source, target), count in sorted(
+                counts.items(), key=lambda item: ((item[0][0] or ""), (item[0][1] or ""), item[1])
+            )
+        ]
+        observed = {(source, target) for (source, target) in counts if source and target}
+        allowed = _declared_pairs(declared, observed)
+        outside = {
+            (source, target)
+            for source, target in observed
+            if not _pair_inside(declared, source, target)
+        }
+        relations[name] = {
+            "actual": actual,
+            "declared": declared,
+            "gap": {
+                "actual_only": [
+                    {"source": source, "target": target}
+                    for source, target in sorted(outside)
+                ],
+                "declared_only": [
+                    {"source": source, "target": target}
+                    for source, target in sorted(
+                        allowed - observed, key=lambda item: ((item[0] or ""), (item[1] or ""))
+                    )
+                ],
+            },
+        }
+    return {"relations": relations}
+
+
+def cover_waves(table, graphs, knowledgegraph, node_types=None):
     """Partition each wave's relation names. Candidates are reported and not folded."""
     errors = []
     waves = {}
+    types = node_types or {}
     for wave in WAVES:
         grouped = defaultdict(list)
         malformed = 0
@@ -546,7 +798,7 @@ def cover_waves(table, graphs, knowledgegraph):
                 malformed += 1
         graph_names = set(grouped)
         mapping = table[wave]
-        excluded = table["excluded"][wave]
+        excluded = _excluded_names(table, wave)
         classified_set = set(mapping) & graph_names
         excluded_set = set(excluded) & graph_names
         unclassified_set = graph_names - set(mapping) - set(excluded)
@@ -616,6 +868,13 @@ def cover_waves(table, graphs, knowledgegraph):
             "relations": relations,
             "unclassified_edges": {name: len(grouped[name]) for name in unclassified},
         }
+        if _is_v3(table):
+            waves[wave]["edge_weight"] = _edge_weight(
+                grouped, classified_present, excluded_present, unclassified, malformed,
+            )
+            gaps = _type_gaps(table, grouped, types.get(wave, {}), mapping, set(excluded), graph_names)
+            if gaps is not None:
+                waves[wave]["types"] = gaps
     return waves, sorted(set(errors))
 
 
@@ -654,7 +913,7 @@ def rank_unclassified(table, edges, profile):
     if profile not in WAVES:
         raise ValueError(f"unknown profile {profile}")
     classified_names = table[profile]
-    excluded = set(table["excluded"][profile])
+    excluded = set(_excluded_names(table, profile))
     grouped = defaultdict(list)
     classified = 0
     excluded_edges = 0
@@ -1150,8 +1409,35 @@ def _pair_record(left, right):
     return {"source": left.get("source"), "target": left.get("target")}
 
 
-def property_violations(table, edges):
-    """Edges that break a declared disjoint_with. Each hit keeps both edges."""
+def _type_violations(table, grouped, node_types):
+    """One hit per declared side an edge falls outside. Untyped endpoints are outside."""
+    if not node_types:
+        return []
+    found = []
+    for name, declared in _type_declarations(table).items():
+        for edge in grouped.get(name, ()):
+            source = node_types.get(edge.get("source"))
+            target = node_types.get(edge.get("target"))
+            pair = {"source_type": source, "target_type": target}
+            if "domain" in declared and source not in declared["domain"]:
+                found.append({
+                    "edges": [edge],
+                    "pair": dict(pair),
+                    "property": "domain",
+                    "relations": [name],
+                })
+            if "range" in declared and target not in declared["range"]:
+                found.append({
+                    "edges": [edge],
+                    "pair": dict(pair),
+                    "property": "range",
+                    "relations": [name],
+                })
+    return found
+
+
+def property_violations(table, edges, node_types=None):
+    """Edges that break a declared property. Each disjoint hit keeps both edges."""
     grouped = defaultdict(list)
     skipped = 0
     for edge in edges:
@@ -1192,6 +1478,7 @@ def property_violations(table, edges):
                     "property": "disjoint_with",
                     "relations": list(key),
                 })
+    violations.extend(_type_violations(table, grouped, node_types or {}))
     violations.sort(key=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))
     return violations, skipped
 
@@ -1230,6 +1517,122 @@ def _relation_counts(edges):
         if name is not None:
             counts[name] += 1
     return {name: counts[name] for name in sorted(counts)}
+
+
+def _pin_record(source, path, target, sha):
+    return {"path": path, "sha": sha, "source": source, "target": target}
+
+
+def _workflow_pin_records(table, edges):
+    """workflow-pin edges of the repos profile, as (source, path, target, sha) records."""
+    repos = table.get(REPO_PROFILE) if isinstance(table, dict) else None
+    if not isinstance(repos, dict) or WORKFLOW_PIN not in repos:
+        raise ValueError(f"{REPO_PROFILE} profile does not classify {WORKFLOW_PIN}")
+    records = []
+    skipped = 0
+    for edge in edges:
+        name = _usable_relation_name(edge)
+        if name is None:
+            skipped += 1
+            continue
+        if name != WORKFLOW_PIN:
+            continue
+        source = _endpoint(edge.get("source"))
+        target = _endpoint(edge.get("target"))
+        path = edge.get("path")
+        sha = edge.get("pin")
+        if not isinstance(sha, str) or _SHA.fullmatch(sha.lower()) is None:
+            skipped += 1
+            continue
+        if not _name_ok(source) or not _name_ok(target) or not isinstance(path, str) or path.strip() == "":
+            skipped += 1
+            continue
+        records.append(_pin_record(source, path.strip(), target, sha.lower()))
+    return records, skipped
+
+
+def _audit_pin(item, result, fallback_source):
+    """One gh-identity pin, or None when the row redacts the repository."""
+    repository = item.get("repository", result.get("repository"))
+    commit = item.get("commit", result.get("commit"))
+    if repository is None and commit is None:
+        return None
+    source = item.get("source") if _name_ok(item.get("source")) else fallback_source
+    target = _endpoint(repository) if repository is not None else None
+    path = item.get("file")
+    if not isinstance(commit, str) or _SHA.fullmatch(commit.lower()) is None:
+        raise ValueError("pin-audit commit must be 40 hex characters")
+    if not _name_ok(target) or not isinstance(path, str) or path.strip() == "":
+        raise ValueError("pin-audit pin must name a repository and a file")
+    if not _name_ok(source):
+        source = ""
+    return _pin_record(_endpoint(source) if source else "", path.strip(), target, commit.lower())
+
+
+def _read_pin_audit(path, source):
+    data = _load_json(path)
+    if not isinstance(data, dict) or data.get("schema") != PIN_AUDIT_SCHEMA:
+        raise ValueError(f"{path}: expected {PIN_AUDIT_SCHEMA}")
+    results = data.get("results")
+    if not isinstance(results, list):
+        raise ValueError(f"{path}: results must be an array")
+    pins = []
+    skipped = 0
+    for index, result in enumerate(results):
+        where = f"{path}: results[{index}]"
+        if not isinstance(result, dict):
+            raise ValueError(f"{where} must be an object")
+        items = result.get("pins")
+        if not isinstance(items, list):
+            raise ValueError(f"{where}.pins must be an array")
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError(f"{where}.pins must contain objects")
+            record = _audit_pin(item, result, source)
+            if record is None:
+                skipped += 1
+                continue
+            pins.append(record)
+    return pins, skipped
+
+
+def reconcile_pins(too_pins, audit_pins):
+    """Set difference of workflow pins. Same source, path, and target with another SHA is its own bucket."""
+    def place(pin):
+        return (pin["source"], pin["path"], pin["target"])
+
+    too_places, audit_places = {}, {}
+    for pin in too_pins:
+        too_places.setdefault(place(pin), set()).add(pin["sha"])
+    for pin in audit_pins:
+        audit_places.setdefault(place(pin), set()).add(pin["sha"])
+    only_too, only_audit, same, different = [], [], [], []
+    for key in sorted(set(too_places) | set(audit_places)):
+        left = too_places.get(key, set())
+        right = audit_places.get(key, set())
+        source, path, target = key
+        if not right:
+            only_too.extend(_pin_record(source, path, target, sha) for sha in sorted(left))
+            continue
+        if not left:
+            only_audit.extend(_pin_record(source, path, target, sha) for sha in sorted(right))
+            continue
+        if left == right:
+            same.extend(_pin_record(source, path, target, sha) for sha in sorted(left))
+            continue
+        different.append({
+            "path": path,
+            "pin_audit": sorted(right),
+            "source": source,
+            "target": target,
+            "taxontoy": sorted(left),
+        })
+    return {
+        "different_sha": different,
+        "only_pin_audit": only_audit,
+        "only_taxontoy": only_too,
+        "same": same,
+    }
 
 
 def _read_edge_graph(path):
@@ -1277,16 +1680,23 @@ def _render_text(payload):
         lines.append(f"error {error}")
     for row in payload.get("properties", []):
         partner = f" {row['relation']}" if "relation" in row else ""
+        types = f" {' '.join(row['types'])}" if row.get("types") else ""
         lines.append(
-            f"property {row['scope']} {row['name']} {row['property']}{partner} since {row['since']}"
+            f"property {row['scope']} {row['name']} {row['property']}{partner}{types} since {row['since']}"
         )
     for row in payload.get("relations", []):
         lines.append(
             f"relation {row['profile']} {row['relation']} class {row['class']} direction {row['direction']}"
         )
     for wave in payload.get("excluded", {}):
-        for name in payload["excluded"][wave]:
-            lines.append(f"excluded {wave} {name}")
+        for entry in payload["excluded"][wave]:
+            if isinstance(entry, str):
+                lines.append(f"excluded {wave} {entry}")
+                continue
+            alias = f" alias_of {entry['alias_of']}" if entry.get("kind") == "alias" else ""
+            lines.append(
+                f"excluded {wave} {entry['relation']} {entry['kind']}{alias} since {entry['since']}"
+            )
     for wave in sorted(payload.get("waves", {})):
         body = payload["waves"][wave]
         if "candidates" in body:
@@ -1310,6 +1720,37 @@ def _render_text(payload):
             "partition total {total} classified {classified} excluded {excluded} "
             "unclassified {unclassified} stale {stale}".format(**part)
         )
+        if "edge_weight" in body:
+            weight = body["edge_weight"]
+            ratio = weight["classified_ratio"]
+            lines.append(
+                "edges classified {classified} excluded {excluded} unclassified {unclassified} "
+                "total {total} ratio {numerator}/{denominator}".format(
+                    classified=weight["classified"],
+                    excluded=weight["excluded"],
+                    unclassified=weight["unclassified"],
+                    total=weight["total"],
+                    numerator=ratio["numerator"],
+                    denominator=ratio["denominator"],
+                )
+            )
+        if "types" in body:
+            if "note" in body["types"]:
+                lines.append(f"note {body['types']['note']}")
+            for name in sorted(body["types"]["relations"]):
+                row = body["types"]["relations"][name]
+                declared = row["declared"]
+                domain = " ".join(declared.get("domain", [])) or "-"
+                span = " ".join(declared.get("range", [])) or "-"
+                lines.append(f"types {name} domain {domain} range {span}")
+                for actual in row.get("actual", []):
+                    lines.append(
+                        f"actual {name} {actual['source']}->{actual['target']}:{actual['edges']}"
+                    )
+                gap = row.get("gap", {})
+                for kind in ("actual_only", "declared_only"):
+                    for pair in gap.get(kind, []):
+                        lines.append(f"gap {kind} {name} {pair['source']}->{pair['target']}")
         for name in sorted(body["class_edges"]):
             lines.append(f"class {name} edges {body['class_edges'][name]}")
         for name in sorted(body["relations"]):
@@ -1342,6 +1783,26 @@ def _render_text(payload):
             for alias in row["alias_candidates"]:
                 lines.append(f"alias {alias['detection']} {' '.join(alias['relations'])}")
         lines.append(f"nameless {payload['nameless']['edges']}")
+    if payload.get("command") == "reconcile":
+        counts = payload["counts"]
+        lines.append(
+            "pins only_taxontoy {only_taxontoy} only_pin_audit {only_pin_audit} "
+            "different_sha {different_sha} same {same}".format(**counts)
+        )
+        if payload.get("repository"):
+            lines.append(f"repository {payload['repository']}")
+        lines.append(f"skipped {payload['skipped']}")
+        for row in payload["only_taxontoy"]:
+            lines.append(f"only_taxontoy {row['source']} {row['path']} {row['target']} {row['sha']}")
+        for row in payload["only_pin_audit"]:
+            lines.append(f"only_pin_audit {row['source']} {row['path']} {row['target']} {row['sha']}")
+        for row in payload["different_sha"]:
+            lines.append(
+                f"different_sha {row['source']} {row['path']} {row['target']} "
+                f"taxontoy {','.join(row['taxontoy'])} pin_audit {','.join(row['pin_audit'])}"
+            )
+        for row in payload["same"]:
+            lines.append(f"same {row['source']} {row['path']} {row['target']} {row['sha']}")
     if payload.get("command") == "graph":
         lines.append(f"nodes {len(payload['nodes'])}")
         lines.append(f"edges {len(payload['edges'])}")
@@ -1358,7 +1819,11 @@ def _render_text(payload):
         lines.append(f"skipped {payload['skipped']}")
         for item in payload["violations"]:
             pair = item["pair"]
-            if "path" in pair:
+            if "source_type" in pair:
+                source_type = pair.get("source_type") or "missing"
+                target_type = pair.get("target_type") or "missing"
+                ident = f"source_type {source_type} target_type {target_type}"
+            elif "path" in pair:
                 ident = f"repository {pair['repository']} path {pair['path']}"
             else:
                 ident = f"source {pair['source']} target {pair['target']}"
@@ -1506,6 +1971,18 @@ def main(argv=None):
     props.add_argument("--strict", action="store_true", help="exit 2 when a declared property is violated")
     _add_format(props, "json")
 
+    reconcile = commands.add_parser(
+        "reconcile",
+        help="diff repos workflow-pin edges against a gh_identity pin-audit file",
+    )
+    reconcile.add_argument("table", nargs="?", type=Path)
+    reconcile.add_argument("--graph", type=Path)
+    reconcile.add_argument("--manifest", type=Path)
+    reconcile.add_argument("--pin-audit", type=Path, help="gh-identity-pin-audit/1 JSON; TOO does not call GitHub")
+    reconcile.add_argument("--repo", help="workflow repository the pin-audit file describes")
+    reconcile.add_argument("--strict", action="store_true", help="exit 2 when the pin sets differ")
+    _add_format(reconcile, "json")
+
     args = parser.parse_args(argv)
     try:
         fmt = _format(args)
@@ -1571,12 +2048,14 @@ def main(argv=None):
             if manifest:
                 built, inputs = _graph_from_manifest(manifest)
                 edges = built["edges"]
+                node_types = _node_types(built["nodes"])
                 input_paths = [table_path, *inputs]
             else:
                 document = _read_edge_graph(graph_path)
                 edges = document["edges"]
+                node_types = _node_types(document.get("nodes"))
                 input_paths = [table_path, graph_path]
-            violations, skipped = property_violations(data, edges)
+            violations, skipped = property_violations(data, edges, node_types)
             payload = {
                 "command": "properties",
                 "counts": _relation_counts(edges),
@@ -1591,6 +2070,47 @@ def main(argv=None):
             }
             _emit(_render(payload, fmt), output)
             if violations and args.strict:
+                return 2
+            return 0 if payload["ok"] else 1
+        if args.command == "reconcile":
+            graph_path = _choice(args, "graph", "TAXONTOY_GRAPH")
+            manifest = _choice(args, "manifest", "TAXONTOY_MANIFEST")
+            audit_path = _choice(args, "pin_audit", "TAXONTOY_PIN_AUDIT")
+            if bool(graph_path) == bool(manifest):
+                raise ValueError("pass --graph or --manifest")
+            if not audit_path:
+                raise ValueError("pass --pin-audit or set TAXONTOY_PIN_AUDIT")
+            repository = _clean(getattr(args, "repo", None)) or _clean(os.environ.get("TAXONTOY_REPO"))
+            source = _endpoint(repository) if repository else ""
+            if manifest:
+                built, inputs = _graph_from_manifest(manifest)
+                edges = built["edges"]
+                input_paths = [table_path, audit_path, *inputs]
+            else:
+                document = _read_edge_graph(graph_path)
+                edges = document["edges"]
+                input_paths = [table_path, audit_path, graph_path]
+            too_pins, too_skipped = _workflow_pin_records(data, edges)
+            audit_pins, audit_skipped = _read_pin_audit(audit_path, source)
+            diff = reconcile_pins(too_pins, audit_pins)
+            differed = bool(diff["only_taxontoy"] or diff["only_pin_audit"] or diff["different_sha"])
+            payload = {
+                "command": "reconcile",
+                "counts": {key: len(diff[key]) for key in ("different_sha", "only_pin_audit", "only_taxontoy", "same")},
+                "different_sha": diff["different_sha"],
+                "errors": [],
+                "inputs": _inputs(input_paths),
+                "ok": not differed,
+                "only_pin_audit": diff["only_pin_audit"],
+                "only_taxontoy": diff["only_taxontoy"],
+                "repository": source or None,
+                "same": diff["same"],
+                "skipped": too_skipped + audit_skipped,
+                "tool": "taxontoy",
+                "version": __version__,
+            }
+            _emit(_render(payload, fmt), output)
+            if differed and args.strict:
                 return 2
             return 0 if payload["ok"] else 1
         graphs, types, graph_paths = _parse_graphs(args.graph)
@@ -1622,7 +2142,7 @@ def main(argv=None):
             return 0 if payload["ok"] else 1
         onto = _onto_path(args)
         knowledgegraph = _load_knowledgegraph(onto)
-        waves, cover_errors = cover_waves(data, graphs, knowledgegraph)
+        waves, cover_errors = cover_waves(data, graphs, knowledgegraph, types)
         payload = {
             "command": "coverage",
             "errors": cover_errors,

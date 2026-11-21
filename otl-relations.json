@@ -1,5 +1,5 @@
 {
-  "schema": "taxontoy-relations/2",
+  "schema": "taxontoy-relations/3",
   "audit": {
     "dependsOn": "dependency",
     "duplicates": "overlap"
@@ -36,32 +36,154 @@
   },
   "excluded": {
     "audit": [
-      "belongsTo",
-      "blocks",
-      "changesFile",
-      "depends_on",
-      "derived_from",
-      "hasBase",
-      "hasHead",
-      "hasMain",
-      "hasRun",
-      "has_status",
-      "integrates_into",
-      "missingFromMain",
-      "observes",
-      "overlapsWith",
-      "runsAt",
-      "targets",
-      "targetsBranch",
-      "updates"
+      {
+        "relation": "belongsTo",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "リポジトリへの所属であり、監査の依存や重なりではない。source は File、ActionsRun、Commit、PullRequest、Branch で、target は Repository である"
+      },
+      {
+        "relation": "blocks",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "dependsOn の逆向きとして足される辺であり、依存クラスの名前ではない"
+      },
+      {
+        "relation": "changesFile",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "ファイル変更の記録であり、監査の意味クラスではない"
+      },
+      {
+        "relation": "depends_on",
+        "kind": "alias",
+        "alias_of": "dependsOn",
+        "since": "2026-11-21",
+        "reason": "区切りだけが違う。dependsOn と同じ端点の組が 13 件ある"
+      },
+      {
+        "relation": "derived_from",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "由来の記録であり、この弾の意味クラスではない"
+      },
+      {
+        "relation": "hasBase",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "基点ブランチへの接続であり、意味クラスではない"
+      },
+      {
+        "relation": "hasHead",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "ヘッドへの接続であり、意味クラスではない"
+      },
+      {
+        "relation": "hasMain",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "main への接続であり、意味クラスではない"
+      },
+      {
+        "relation": "hasRun",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "実行への接続であり、意味クラスではない"
+      },
+      {
+        "relation": "has_status",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "状態の記録であり、意味クラスではない"
+      },
+      {
+        "relation": "integrates_into",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "統合先の記録であり、依存クラスには入れない"
+      },
+      {
+        "relation": "missingFromMain",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "main に無いことの記録であり、意味クラスではない"
+      },
+      {
+        "relation": "observes",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "観測の記録であり、依存や重なりのクラスではない"
+      },
+      {
+        "relation": "overlapsWith",
+        "kind": "alias",
+        "alias_of": "duplicates",
+        "since": "2026-11-21",
+        "reason": "duplicates と同じ端点の組がある"
+      },
+      {
+        "relation": "runsAt",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "実行時刻の記録であり、意味クラスではない"
+      },
+      {
+        "relation": "targets",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "対象の記録であり、意味クラスではない"
+      },
+      {
+        "relation": "targetsBranch",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "対象ブランチの記録であり、意味クラスではない"
+      },
+      {
+        "relation": "updates",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "更新の記録であり、意味クラスではない。changesFile と同じ端点の組がある"
+      }
     ],
     "concepts": [
-      "derived_from",
-      "differentiaElement",
-      "genusElement",
-      "hasElement",
-      "hasName",
-      "observes"
+      {
+        "relation": "derived_from",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "由来の記録であり、階層や類似のクラスではない"
+      },
+      {
+        "relation": "differentiaElement",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "種差の要素であり、階層や類似の関係ではない"
+      },
+      {
+        "relation": "genusElement",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "類の要素であり、階層や類似の関係ではない"
+      },
+      {
+        "relation": "hasElement",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "要素の所属であり、階層や類似の関係ではない"
+      },
+      {
+        "relation": "hasName",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "名前の記録であり、階層や類似の関係ではない"
+      },
+      {
+        "relation": "observes",
+        "kind": "out_of_scope",
+        "since": "2026-11-21",
+        "reason": "観測の記録であり、階層や類似のクラスではない"
+      }
     ],
     "cases": [],
     "repos": []
@@ -92,6 +214,26 @@
       }
     },
     "relations": {
+      "belongsTo": {
+        "domain": {
+          "types": [
+            "ActionsRun",
+            "Branch",
+            "Commit",
+            "File",
+            "PullRequest"
+          ],
+          "since": "2026-11-21",
+          "reason": "監査グラフで Repository へ向かう belongsTo の source は File、ActionsRun、Commit、PullRequest、Branch である"
+        },
+        "range": {
+          "types": [
+            "Repository"
+          ],
+          "since": "2026-11-21",
+          "reason": "belongsTo の target は Repository だけである"
+        }
+      },
       "blocks": {
         "inverse_of": {
           "relation": "dependsOn",

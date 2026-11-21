@@ -11,9 +11,9 @@
 - `audit` / `concepts` / `cases` の値はクラス名の文字列です。TopOntoLogy はこの形のまま読めます。
 - クラスは `dependency`、`overlap`、`hierarchy`、`similarity`、`unknown-element`、`hypothesis`、`judgment-record`、`affirmation`、`negation` だけです。
 - `direction` は分類した関係すべての向きです。`forward` は一方向、`mutual` は両方向を別の辺として保存、`undirected` は向きが無くグラフ JSON では一方向だけ記録します。クラスと向きが食い違うと検査は失敗します。
-- `excluded` はグラフに現れるが、その弾の意味クラスには入れない関係名です。並べて重複なく書きます。分類と除外の両方に入る名前は失敗です。
+- `excluded` はグラフに現れるが、その弾の意味クラスには入れない関係です。`taxontoy-relations/2` では関係名の配列です。並べて重複なく書きます。`taxontoy-relations/3` では各要素がオブジェクトです。`relation`、`kind`、`since`（YYYY-MM-DD）、`reason` が要ります。`kind` は `out_of_scope` か `alias` です。`alias` は同じプロファイルで分類済みの正規の関係を `alias_of` で指します。`depends_on` は `dependsOn` の別名で、同じ端点の組が 13 件あります。`overlapsWith` は `duplicates` の別名です。`out_of_scope` に `alias_of` は書けません。分類と除外の両方に入る名前は失敗です。検査は `taxontoy-relations/2` もそのまま読みます。
 - オブジェクトのキーが重複している JSON は失敗です。
-- `properties` はクラスまたは関係ごとの性質です。使える名前は `transitive`、`symmetric`、`inverse_of`、`acyclic`、`disjoint_with` です。各宣言には `since`（YYYY-MM-DD）と `reason` が要ります。`inverse_of` は表にある相手を指し、相手も自分を逆として宣言していなければなりません。`symmetric` と `acyclic` は同時に宣言できません。`disjoint_with` が自分自身を指すと失敗です。クラスに書いた性質は、そのクラスの関係に引き継がれます。
+- `properties` はクラスまたは関係ごとの性質です。使える名前は `transitive`、`symmetric`、`inverse_of`、`acyclic`、`disjoint_with` です。各宣言には `since`（YYYY-MM-DD）と `reason` が要ります。`inverse_of` は表にある相手を指し、相手も自分を逆として宣言していなければなりません。`symmetric` と `acyclic` は同時に宣言できません。`disjoint_with` が自分自身を指すと失敗です。クラスに書いた性質は、そのクラスの関係に引き継がれます。関係には任意で `domain` と `range` を書けます。値はノード型の配列 `types` と、`since`、`reason` です。型名は並べて重複なく書きます。`domain` は source の型、`range` は target の型です。宣言した側に無い型の辺は違反です。型が読めない端点も宣言の外です。ノードに型が無いグラフでは、この検査は省きます。
 
 `dependsOn` は依存する側から前提への `forward`、`duplicates` は `undirected`、`narrower` は上位から下位への `forward`、`similarTo` は `mutual` です。
 
@@ -44,9 +44,17 @@
 
 `taxontoy coverage` は、渡した OTL グラフの関係名を、分類済み・除外・未分類に分けます。三つの集合は互いに重ならず、足すとグラフに現れた関係名の全体になります。未分類が 1 件でもある、または表か除外リストにあってグラフに無い名前（stale）があるときは失敗です。割合の閾値はありません。
 
+`taxontoy-relations/3` の被覆は、関係名の数に加えて辺の重みを出します。`edge_weight` は分類済みの辺、除外の辺、未分類の辺、壊れた辺を分け、分類済みの辺数 / すべての辺数を `classified_ratio` の分子と分母で書きます。小数にはしません。`domain` か `range` を宣言した関係は、宣言した型とグラフで見た (source の型, target の型) の差を `types` に出します。宣言にあって辺が無い組は `declared_only`、辺にあって宣言の外の組は `actual_only` です。ノードに型が無いときは注記だけを残します。`taxontoy-relations/2` の被覆には、この二つの欄は出ません。
+
+`belongsTo` の `range` は `Repository` です。監査グラフでは source が File 542、ActionsRun 93、Commit 32、PullRequest 15、Branch 9 で、宣言した `domain` と一致します。分類済みの辺は監査で 38 / 2342（約 1.6%）、概念で 91 / 826（約 11%）です。
+
+`taxontoy properties` は `disjoint_with` に加え、`domain` と `range` の外にある辺を違反として返します。違反が無いときの終了コードは 0、あるときは 1、`--strict` のときは 2 です。
+
+`taxontoy reconcile` は、`repos` の `workflow-pin` 辺と、gh_identity の `pin-audit` が書いた `gh-identity-pin-audit/1` の JSON を集合として比べます。TOO は GitHub も gh_identity も呼びません。監査ファイルは `--pin-audit` か `TAXONTOY_PIN_AUDIT` です。`--repo`（または `TAXONTOY_REPO`）はその監査が対象にした workflow のあるリポジトリです。ピンは source、workflow の path、固定先、SHA で一意です。SHA とリポジトリ名は小文字に揃えます。同じ source、path、固定先で SHA だけが違う組は `different_sha` です。片方にしか無いピンは `only_taxontoy` と `only_pin_audit` です。SHA まで同じ組は `same` です。名前を伏せた `unavailable` は件数だけを `skipped` に入れ、リポジトリ名は出しません。差が無いときは 0、あるときは 1、`--strict` のときは 2 です。
+
 辺の関係名は `kind` があればそれ、無ければ `relation` です。入力パスは引数か環境変数だけです。`TAXONTOY_TABLE` は表のパス、`ONTO_CHECKOUT` は ONTO の checkout です。`--onto` を付けるとその checkout を使います。循環検出とトポロジカル順は、その checkout の `knowledgegraph.py` をそのまま呼びます。報告に載るのは非循環かどうかと、サンプル閉路の件数だけです。ノード ID は出しません。
 
-監査グラフは同じ端点に別名の辺も足します。`taxontoy coverage` は辺数を名前ごとに数え、`depends_on` を `dependsOn` に足しません。`taxontoy candidates` は畳まずに候補だけを出します。区切りの違い（`dependsOn` / `depends_on` / `depends-on`）、大文字小文字の違い、逆向きが常に対になる組、辺が常に逆向きにもある関係、端点の種類が二つ以上に割れる関係です。ノードに `type` が無いグラフでは多義の検出を省き、その旨を書きます。宣言と一致する候補には `declared` を付けますが、分類には使いません。
+監査グラフは同じ端点に別名の辺も足します。`taxontoy coverage` は辺数を名前ごとに数え、`depends_on` を `dependsOn` に足しません。`taxontoy candidates` は畳まずに候補だけを出します。区切りの違い（`dependsOn` / `depends_on` / `depends-on`）、大文字小文字の違い、逆向きが常に対になる組、辺が常に逆向きにもある関係、端点の種類が二つ以上に割れる関係です。ノードに `type` が無いグラフでは多義の検出を省き、その旨を書きます。宣言と一致する候補には `declared` を付けますが、分類には使いません。`alias` の除外は、同じ端点・区切り・大文字小文字の候補を宣言済みにします。辺は足しません。
 
 パスの前後の空白は除きます。空白だけなら、その引数や環境変数は未設定です。
 
@@ -78,6 +86,11 @@ python -S taxontoy.py rank-unclassified build/audit.json otl-relations.json \
 python -S taxontoy.py graph --manifest fixtures/repos/manifest.json --format json
 python -S taxontoy.py properties otl-relations.json \
   --graph fixtures/repos/graph.json \
+  --format json
+python -S taxontoy.py reconcile otl-relations.json \
+  --graph fixtures/repos/graph.json \
+  --pin-audit pin-audit.json \
+  --repo owner/name \
   --format json
 ```
 

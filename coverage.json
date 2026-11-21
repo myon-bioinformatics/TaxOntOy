@@ -16,7 +16,7 @@
     },
     {
       "path": "otl-relations.json",
-      "sha256": "4fab63b2160446b9a6da5990080832087a32c602775899ab34caae47705e5687"
+      "sha256": "857e015d7df020509dda6ec43dd8a9f74784c8a1976a40828d174b7cba4c3b4a"
     }
   ],
   "ok": true,
@@ -25,7 +25,7 @@
     "sha256": "3f9a7540d8bfb4917dd521b7d19a56a68699146e60af759cf67b0f7a3263683f"
   },
   "tool": "taxontoy",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "waves": {
     "audit": {
       "alias_candidates": [
@@ -106,6 +106,16 @@
         "dependency": 13,
         "overlap": 25
       },
+      "edge_weight": {
+        "classified": 38,
+        "classified_ratio": {
+          "denominator": 2342,
+          "numerator": 38
+        },
+        "excluded": 2304,
+        "total": 2342,
+        "unclassified": 0
+      },
       "excluded_edges": {
         "belongsTo": 691,
         "blocks": 13,
@@ -180,6 +190,55 @@
           "symmetric": false
         }
       },
+      "types": {
+        "relations": {
+          "belongsTo": {
+            "actual": [
+              {
+                "edges": 93,
+                "source": "ActionsRun",
+                "target": "Repository"
+              },
+              {
+                "edges": 9,
+                "source": "Branch",
+                "target": "Repository"
+              },
+              {
+                "edges": 32,
+                "source": "Commit",
+                "target": "Repository"
+              },
+              {
+                "edges": 542,
+                "source": "File",
+                "target": "Repository"
+              },
+              {
+                "edges": 15,
+                "source": "PullRequest",
+                "target": "Repository"
+              }
+            ],
+            "declared": {
+              "domain": [
+                "ActionsRun",
+                "Branch",
+                "Commit",
+                "File",
+                "PullRequest"
+              ],
+              "range": [
+                "Repository"
+              ]
+            },
+            "gap": {
+              "actual_only": [],
+              "declared_only": []
+            }
+          }
+        }
+      },
       "unclassified_edges": {}
     },
     "cases": {
@@ -189,6 +248,16 @@
         "hypothesis": 3,
         "judgment-record": 3,
         "unknown-element": 1
+      },
+      "edge_weight": {
+        "classified": 10,
+        "classified_ratio": {
+          "denominator": 10,
+          "numerator": 10
+        },
+        "excluded": 0,
+        "total": 10,
+        "unclassified": 0
       },
       "excluded_edges": {},
       "names": {
@@ -251,6 +320,16 @@
       "class_edges": {
         "hierarchy": 29,
         "similarity": 62
+      },
+      "edge_weight": {
+        "classified": 91,
+        "classified_ratio": {
+          "denominator": 826,
+          "numerator": 91
+        },
+        "excluded": 735,
+        "total": 826,
+        "unclassified": 0
       },
       "excluded_edges": {
         "derived_from": 43,
