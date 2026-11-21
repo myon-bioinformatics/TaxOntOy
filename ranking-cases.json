@@ -3,6 +3,7 @@
   "counts": {
     "classified": 10,
     "edges": 10,
+    "excluded": 0,
     "nameless": 0,
     "unclassified": 0
   },

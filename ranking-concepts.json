@@ -3,8 +3,9 @@
   "counts": {
     "classified": 91,
     "edges": 826,
+    "excluded": 735,
     "nameless": 0,
-    "unclassified": 735
+    "unclassified": 0
   },
   "errors": [],
   "inputs": [

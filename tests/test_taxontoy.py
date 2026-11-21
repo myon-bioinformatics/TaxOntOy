@@ -1383,6 +1383,8 @@ def ranking_edges():
         ["not", "edge"],
         {"kind": "", "source": "a", "target": "b"},
         {"relation": None, "source": "a", "target": "b"},
+        ["kind"],
+        "kind",
     ]
 
 
@@ -1445,12 +1447,17 @@ class RankUnclassifiedTests(unittest.TestCase):
     def test_names_are_ranked_without_folding_and_nameless_edges_stay(self):
         found = taxontoy.rank_unclassified(minimal_table(), ranking_edges(), "audit")
         self.assertEqual(found["counts"], {
-            "classified": 2, "edges": 21, "nameless": 6, "unclassified": 13,
+            "classified": 2, "edges": 23, "excluded": 4, "nameless": 8, "unclassified": 9,
         })
-        self.assertEqual(found["nameless"], {"edges": 6})
+        self.assertEqual(found["nameless"], {"edges": 8})
         self.assertEqual(
-            found["counts"]["classified"] + found["counts"]["unclassified"] + found["counts"]["nameless"],
+            found["counts"]["classified"] + found["counts"]["excluded"]
+            + found["counts"]["unclassified"] + found["counts"]["nameless"],
             len(ranking_edges()),
+        )
+        self.assertEqual(
+            sum(row["edges"] for row in found["ranking"]),
+            found["counts"]["excluded"] + found["counts"]["unclassified"],
         )
         self.assertEqual(found["ranking"], expected_audit_ranking())
         self.assertEqual(
@@ -1468,7 +1475,7 @@ class RankUnclassifiedTests(unittest.TestCase):
     def test_another_profile_does_not_reuse_this_profile_status(self):
         found = taxontoy.rank_unclassified(minimal_table(), ranking_edges(), "concepts")
         self.assertEqual(found["counts"], {
-            "classified": 1, "edges": 21, "nameless": 6, "unclassified": 14,
+            "classified": 1, "edges": 23, "excluded": 0, "nameless": 8, "unclassified": 14,
         })
         relations = {row["relation"]: row for row in found["ranking"]}
         self.assertNotIn("narrower", relations)
@@ -1480,6 +1487,27 @@ class RankUnclassifiedTests(unittest.TestCase):
         self.assertIsNone(relations["blocks"]["elsewhere"])
         self.assertEqual(sum(row["edges"] for row in found["ranking"]), 14)
 
+    def test_a_missing_endpoint_is_not_part_of_an_alias_pair(self):
+        edges = [
+            {"source": "a", "relation": "foo", "target": "b"},
+            {"source": "c", "relation": "foo", "target": None},
+            {"source": "b", "relation": "bar", "target": "a"},
+        ]
+        found = taxontoy.rank_unclassified(minimal_table(), edges, "audit")
+        rows = {row["relation"]: row for row in found["ranking"]}
+        self.assertEqual(rows["foo"]["edges"], 2)
+        self.assertEqual(rows["bar"]["edges"], 1)
+        pair = _alias("inverse-pair", ["bar", "foo"])
+        self.assertIn(pair, rows["foo"]["alias_candidates"])
+        self.assertIn(pair, rows["bar"]["alias_candidates"])
+
+    def test_non_dict_edges_with_kind_text_stay_nameless(self):
+        found = taxontoy.rank_unclassified(minimal_table(), [["kind"], "kind", ["not", "edge"]], "audit")
+        self.assertEqual(found["counts"], {
+            "classified": 0, "edges": 3, "excluded": 0, "nameless": 3, "unclassified": 0,
+        })
+        self.assertEqual(found["ranking"], [])
+
     def test_unknown_profile_and_empty_graph(self):
         with self.assertRaisesRegex(ValueError, "unknown profile"):
             taxontoy.rank_unclassified(minimal_table(), [], "nope")
@@ -1490,7 +1518,7 @@ class RankUnclassifiedTests(unittest.TestCase):
         )
         self.assertEqual(found["ranking"], [])
         self.assertEqual(found["counts"], {
-            "classified": 1, "edges": 1, "nameless": 0, "unclassified": 0,
+            "classified": 1, "edges": 1, "excluded": 0, "nameless": 0, "unclassified": 0,
         })
         self.assertEqual(found["nameless"], {"edges": 0})
 
@@ -1531,13 +1559,16 @@ class RankUnclassifiedTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         self.assertIn("command rank-unclassified", result.stdout)
         self.assertIn("profile audit", result.stdout)
-        self.assertIn("edges 21 classified 2 unclassified 13 nameless 6", result.stdout)
+        self.assertIn(
+            "edges 23 classified 2 excluded 4 unclassified 9 nameless 8",
+            result.stdout,
+        )
         self.assertIn("rank 1 alpha edges 3 status unclassified", result.stdout)
         self.assertIn("rank 2 zeta edges 3 status unclassified", result.stdout)
         self.assertIn("alias separator DependsOn dependsOn depends_on", result.stdout)
         self.assertIn("alias inverse-pair blocks depends_on", result.stdout)
         self.assertIn("rank 7 narrower edges 1 status unclassified elsewhere concepts", result.stdout)
-        self.assertIn("nameless 6", result.stdout)
+        self.assertEqual(result.stdout.splitlines()[-1], "nameless 8")
         self.assertNotIn("relationLoses", result.stdout)
         self.assertNotIn("hidden", result.stdout)
 
@@ -1551,8 +1582,8 @@ class RankUnclassifiedTests(unittest.TestCase):
                 "rank-unclassified", str(graph), str(table), "--profile", "audit", "--format", "text",
             ])
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        self.assertIn("edges 1 classified 1 unclassified 0 nameless 0", result.stdout)
-        self.assertIn("nameless 0", result.stdout)
+        self.assertIn("edges 1 classified 1 excluded 0 unclassified 0 nameless 0", result.stdout)
+        self.assertEqual(result.stdout.splitlines()[-1], "nameless 0")
         self.assertNotIn("rank ", result.stdout)
 
     def test_output_path_is_the_only_new_file(self):
@@ -1633,6 +1664,9 @@ class RankUnclassifiedTests(unittest.TestCase):
             self.assertEqual(conflict.returncode, 1)
             self.assertIn("disagree", conflict.stderr)
 
+            omitted = run(["rank-unclassified", str(graph), str(table)], env=env)
+            self.assertEqual(omitted.returncode, 2)
+
         usage = run(["rank-unclassified", "--profile", "nope"])
         self.assertEqual(usage.returncode, 2)
 
@@ -1658,10 +1692,13 @@ class CommittedRankingTests(unittest.TestCase):
         )
         counts = payload["counts"]
         self.assertEqual(
-            counts["classified"] + counts["unclassified"] + counts["nameless"],
+            counts["classified"] + counts["excluded"] + counts["unclassified"] + counts["nameless"],
             counts["edges"],
         )
-        self.assertEqual(sum(row["edges"] for row in payload["ranking"]), counts["unclassified"])
+        self.assertEqual(
+            sum(row["edges"] for row in payload["ranking"]),
+            counts["excluded"] + counts["unclassified"],
+        )
         self.assertEqual(payload["nameless"]["edges"], counts["nameless"])
         self.assertTrue(all(row["folded"] is False for row in payload["ranking"]))
         self.assertTrue(all(
@@ -1673,7 +1710,7 @@ class CommittedRankingTests(unittest.TestCase):
     def test_real_graphs_rank_excluded_names_and_keep_a_nameless_bucket(self):
         audit = self._report("audit")
         self.assertEqual(audit["counts"], {
-            "classified": 38, "edges": 2342, "nameless": 0, "unclassified": 2304,
+            "classified": 38, "edges": 2342, "excluded": 2304, "nameless": 0, "unclassified": 0,
         })
         self.assertEqual(
             [(row["rank"], row["relation"], row["edges"]) for row in audit["ranking"][:10]],
@@ -1704,7 +1741,7 @@ class CommittedRankingTests(unittest.TestCase):
 
         concepts = self._report("concepts")
         self.assertEqual(concepts["counts"], {
-            "classified": 91, "edges": 826, "nameless": 0, "unclassified": 735,
+            "classified": 91, "edges": 826, "excluded": 735, "nameless": 0, "unclassified": 0,
         })
         self.assertEqual(
             [(row["relation"], row["edges"]) for row in concepts["ranking"]],
@@ -1720,7 +1757,7 @@ class CommittedRankingTests(unittest.TestCase):
 
         cases = self._report("cases")
         self.assertEqual(cases["counts"], {
-            "classified": 10, "edges": 10, "nameless": 0, "unclassified": 0,
+            "classified": 10, "edges": 10, "excluded": 0, "nameless": 0, "unclassified": 0,
         })
         self.assertEqual(cases["ranking"], [])
 
@@ -1758,8 +1795,24 @@ class MutationTests(unittest.TestCase):
                 '"elsewhere": None,',
             ),
             (
+                '"edges": classified + excluded_edges + unclassified + nameless,',
                 '"edges": classified + unclassified + nameless,',
-                '"edges": classified + unclassified,',
+            ),
+            (
+                "if _name_ok(source) and _name_ok(target):",
+                "if _name_ok(source) or _name_ok(target):",
+            ),
+            (
+                "if _name_ok(source) and _name_ok(target):",
+                "if True:",
+            ),
+            (
+                "if not isinstance(edge, dict):\n        return None",
+                "if False:\n        return None",
+            ),
+            (
+                'rank.add_argument("--profile", required=True, choices=WAVES)',
+                'rank.add_argument("--profile", required=False, choices=WAVES)',
             ),
             (
                 '"edges": len(items),',
@@ -1820,11 +1873,23 @@ def _ranking_snapshot(module, graph_path, table_path):
         code = module.main([
             "rank-unclassified", str(graph_path), str(table_path), "--profile", "audit", "--format", "text",
         ])
+    with redirect_stderr(io.StringIO()):
+        try:
+            omitted = module.main(["rank-unclassified", str(graph_path), str(table_path)])
+        except SystemExit as exc:
+            omitted = exc.code if isinstance(exc.code, int) else 1
+    endpoints = [
+        {"source": "a", "relation": "foo", "target": "b"},
+        {"source": "c", "relation": "foo", "target": None},
+        {"source": "b", "relation": "bar", "target": "a"},
+    ]
     return {
         "audit": module.rank_unclassified(table, edges, "audit"),
         "bad": bad,
         "code": code,
         "concepts": module.rank_unclassified(table, edges, "concepts"),
+        "endpoints": module.rank_unclassified(table, endpoints, "audit"),
+        "omitted": omitted,
         "text": buffer.getvalue(),
     }
 

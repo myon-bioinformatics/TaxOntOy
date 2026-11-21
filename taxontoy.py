@@ -618,6 +618,7 @@ def rank_unclassified(table, edges, profile):
     excluded = set(table["excluded"][profile])
     grouped = defaultdict(list)
     classified = 0
+    excluded_edges = 0
     unclassified = 0
     nameless = 0
     for edge in edges:
@@ -628,6 +629,8 @@ def rank_unclassified(table, edges, profile):
         grouped[name].append(edge)
         if name in classified_names:
             classified += 1
+        elif name in excluded:
+            excluded_edges += 1
         else:
             unclassified += 1
     alias_input = {}
@@ -662,7 +665,8 @@ def rank_unclassified(table, edges, profile):
     return {
         "counts": {
             "classified": classified,
-            "edges": classified + unclassified + nameless,
+            "edges": classified + excluded_edges + unclassified + nameless,
+            "excluded": excluded_edges,
             "nameless": nameless,
             "unclassified": unclassified,
         },
@@ -750,7 +754,8 @@ def _render_text(payload):
         counts = payload["counts"]
         lines.append(f"profile {payload['profile']}")
         lines.append(
-            "edges {edges} classified {classified} unclassified {unclassified} nameless {nameless}".format(**counts)
+            "edges {edges} classified {classified} excluded {excluded} "
+            "unclassified {unclassified} nameless {nameless}".format(**counts)
         )
         for row in payload["ranking"]:
             suffix = f" elsewhere {row['elsewhere']}" if row["elsewhere"] else ""
