@@ -1176,6 +1176,26 @@ class CandidateTests(unittest.TestCase):
         self.assertTrue(declared(before, "audit", "inverse-pair", ["blocks", "dependsOn"]))
         self.assertFalse(declared(after, "audit", "inverse-pair", ["blocks", "dependsOn"]))
 
+    def test_property_candidates_treats_one_sided_inverse_as_undeclared(self):
+        table = self._table()
+        table["properties"]["relations"].pop("blocks")
+        self.assertIn(
+            "inverse pairs not mutually declared: blocks dependsOn",
+            taxontoy.validate_document(table),
+        )
+        found, notes = taxontoy.property_candidates(
+            table,
+            {
+                "blocks": [{"source": "b", "target": "a"}],
+                "dependsOn": [{"source": "a", "target": "b"}],
+            },
+            {},
+        )
+        inverse = next(item for item in found if item["detection"] == "inverse-pair")
+        self.assertEqual(inverse["relations"], ["blocks", "dependsOn"])
+        self.assertFalse(inverse["declared"])
+        self.assertEqual(notes, ["polysemy: skipped; nodes have no type"])
+
     def test_dropping_a_mirrored_edge_removes_the_symmetric_candidate(self):
         graphs = self._graphs()
         before = json.loads(self._invoke(self._table(), graphs).stdout)
