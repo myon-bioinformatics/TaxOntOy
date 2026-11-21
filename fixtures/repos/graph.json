@@ -1,0 +1,950 @@
+{
+  "command": "graph",
+  "edges": [
+    {
+      "kind": "consumes",
+      "origin": "blueprobe",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "aoi.py",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/NagoyAction",
+      "target": "myon-bioinformatics/BlueProbe"
+    },
+    {
+      "kind": "consumes",
+      "origin": "blueprobe",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "aoi.py",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/QueRyu",
+      "target": "myon-bioinformatics/BlueProbe"
+    },
+    {
+      "kind": "consumes",
+      "origin": "blueprobe/npb",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "aoi.py",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/NagoyAction",
+      "target": "myon-bioinformatics/BlueProbe"
+    },
+    {
+      "kind": "consumes",
+      "origin": "blueprobe/npb",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "aoi.py",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/QueRyu",
+      "target": "myon-bioinformatics/BlueProbe"
+    },
+    {
+      "kind": "consumes",
+      "origin": "pythdragoras",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "aoi.py",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/DRAgoWing",
+      "target": "myon-bioinformatics/PythDRagoras"
+    },
+    {
+      "kind": "consumes",
+      "origin": "pythdragoras",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "aoi.py",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/SakAnalytics",
+      "target": "myon-bioinformatics/PythDRagoras"
+    },
+    {
+      "kind": "consumes",
+      "origin": "pythdragoras/core",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "aoi.py",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/DRAgoWing",
+      "target": "myon-bioinformatics/PythDRagoras"
+    },
+    {
+      "kind": "consumes",
+      "origin": "pythdragoras/core",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "aoi.py",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/SakAnalytics",
+      "target": "myon-bioinformatics/PythDRagoras"
+    },
+    {
+      "kind": "consumes",
+      "origin": "queryu",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "aoi.py",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/BlueProbe",
+      "target": "myon-bioinformatics/QueRyu"
+    },
+    {
+      "kind": "consumes",
+      "origin": "queryu",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "aoi.py",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/NagoyAction",
+      "target": "myon-bioinformatics/QueRyu"
+    },
+    {
+      "kind": "consumes",
+      "origin": "queryu/ask",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "aoi.py",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/DRAgoWing",
+      "target": "myon-bioinformatics/QueRyu"
+    },
+    {
+      "kind": "consumes",
+      "origin": "queryu/ask",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "aoi.py",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/NagoyAction",
+      "target": "myon-bioinformatics/QueRyu"
+    },
+    {
+      "kind": "consumes",
+      "origin": "queryu/core",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "aoi.py",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/BlueProbe",
+      "target": "myon-bioinformatics/QueRyu"
+    },
+    {
+      "kind": "consumes",
+      "origin": "sakanalytics",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "aoi.py",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/PythDRagoras",
+      "target": "myon-bioinformatics/SakAnalytics"
+    },
+    {
+      "kind": "consumes",
+      "origin": "sakanalytics/npb",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "aoi.py",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/NagoyAction",
+      "target": "myon-bioinformatics/SakAnalytics"
+    },
+    {
+      "kind": "consumes",
+      "origin": "sakanalytics/npb",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "aoi.py",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/PythDRagoras",
+      "target": "myon-bioinformatics/SakAnalytics"
+    },
+    {
+      "kind": "subtree",
+      "path": "blueprobe",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "child-heads.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/BlueProbe"
+    },
+    {
+      "kind": "subtree",
+      "path": "dragowing",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "child-heads.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/DRAgoWing"
+    },
+    {
+      "kind": "subtree",
+      "path": "nagoyaction",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "child-heads.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/NagoyAction"
+    },
+    {
+      "kind": "subtree",
+      "path": "pythdragoras",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "child-heads.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/PythDRagoras"
+    },
+    {
+      "kind": "subtree",
+      "path": "queryu",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "child-heads.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/QueRyu"
+    },
+    {
+      "kind": "subtree",
+      "path": "sakanalytics",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "child-heads.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/SakAnalytics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "LICENSE",
+      "path": "vendor/aoi-LICENSE",
+      "pin": "9e0147a17695ce63fa73daf75d8195a4f49095bb",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "nagoyaction/vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/NagoyAction",
+      "target": "myon-bioinformatics/Aoi"
+    },
+    {
+      "kind": "vendor",
+      "origin": "LICENSE",
+      "path": "vendor/markdown-LICENSE",
+      "pin": "aa5bccfcaf11f17473c7f1ff502509dfa1547660",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/markdown"
+    },
+    {
+      "kind": "vendor",
+      "origin": "fleet_check.py",
+      "path": "vendor/fleet_check.py",
+      "pin": "81f6aea6231d4490e581443fdeb43a09e6018ff0",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "blueprobe/vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/BlueProbe",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "fleet_check.py",
+      "path": "vendor/fleet_check.py",
+      "pin": "81f6aea6231d4490e581443fdeb43a09e6018ff0",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "dragowing/vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/DRAgoWing",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "fleet_check.py",
+      "path": "vendor/fleet_check.py",
+      "pin": "81f6aea6231d4490e581443fdeb43a09e6018ff0",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "nagoyaction/vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/NagoyAction",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "fleet_check.py",
+      "path": "vendor/fleet_check.py",
+      "pin": "81f6aea6231d4490e581443fdeb43a09e6018ff0",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "pythdragoras/vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/PythDRagoras",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "fleet_check.py",
+      "path": "vendor/fleet_check.py",
+      "pin": "81f6aea6231d4490e581443fdeb43a09e6018ff0",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "queryu/vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/QueRyu",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "fleet_check.py",
+      "path": "vendor/fleet_check.py",
+      "pin": "81f6aea6231d4490e581443fdeb43a09e6018ff0",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "sakanalytics/vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/SakAnalytics",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "markdown.py",
+      "path": "vendor/markdown.py",
+      "pin": "e8d97fdc21d16f2cf9581bcfbd41bb39ec446023",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/markdown"
+    },
+    {
+      "kind": "vendor",
+      "origin": "markdown.py",
+      "path": "vendor/markdown/markdown.py",
+      "pin": "733ff26f6f2f642f9e5895955af8a7b83d68c962",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "dragowing/vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/DRAgoWing",
+      "target": "myon-bioinformatics/markdown"
+    },
+    {
+      "kind": "vendor",
+      "origin": "py_launch.cjs",
+      "path": "vendor/py_launch.cjs",
+      "pin": "384f5dd532076062f7833038764e9a62322c387c",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "shrink/numpy_min.py",
+      "path": "vendor/aoi/shrink/numpy_min.py",
+      "pin": "385e14a09ad56b69c57ec1cbae04c16299d387c5",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "queryu/vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/QueRyu",
+      "target": "myon-bioinformatics/Aoi"
+    },
+    {
+      "kind": "vendor",
+      "origin": "shrink/numpy_min.py",
+      "path": "vendor/aoi/shrink/numpy_min.py",
+      "pin": "52a433c5e5059b878b3a9815c55de656eb625fdb",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "dragowing/vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/DRAgoWing",
+      "target": "myon-bioinformatics/Aoi"
+    },
+    {
+      "kind": "vendor",
+      "origin": "tools/stdlib_min/biopython_min.py",
+      "path": "pkgmin/biopython_min.py",
+      "pin": "a19b39d521de2ea69325080d3e87de9547f55106",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "tools/stdlib_min/httpx_min.py",
+      "path": "mindeps/httpx_min.py",
+      "pin": "a19b39d521de2ea69325080d3e87de9547f55106",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "tools/stdlib_min/numpy_linalg_min.py",
+      "path": "shrink/numpy_linalg_min.py",
+      "pin": "a19b39d521de2ea69325080d3e87de9547f55106",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "tools/stdlib_min/numpy_min.py",
+      "path": "shrink/numpy_min.py",
+      "pin": "a19b39d521de2ea69325080d3e87de9547f55106",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "tools/stdlib_min/plotly_min.py",
+      "path": "vendor/tools/stdlib_min/plotly_min.py",
+      "pin": "3dbb1c6b8a8b069c6955d0b09a5280ab6e92fb32",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "dragowing/vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/DRAgoWing",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "tools/stdlib_min/polars_min.py",
+      "path": "shrink/polars_min.py",
+      "pin": "8621a1025ecc330f6d2d0bcca5a9d11b80fb8716",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "tools/stdlib_min/requests_min.py",
+      "path": "pkgmin/requests_min.py",
+      "pin": "a19b39d521de2ea69325080d3e87de9547f55106",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "tools/stdlib_min/tqdm_min.py",
+      "path": "pkgmin/tqdm_min.py",
+      "pin": "a19b39d521de2ea69325080d3e87de9547f55106",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "tools/uv_tool_build.py",
+      "path": "vendor/uv_tool_build.py",
+      "pin": "d77b295112008928659fb5f2e7ae22f969838980",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/Aoi",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "vendor",
+      "origin": "vendor/py_launch.cjs",
+      "path": "vendor/py_launch.cjs",
+      "pin": "9e0147a17695ce63fa73daf75d8195a4f49095bb",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "nagoyaction/vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/NagoyAction",
+      "target": "myon-bioinformatics/Aoi"
+    },
+    {
+      "kind": "vendor",
+      "origin": "vendor/py_launch.cjs",
+      "path": "vendor/py_launch.cjs",
+      "pin": "9e0147a17695ce63fa73daf75d8195a4f49095bb",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "pythdragoras/vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/PythDRagoras",
+      "target": "myon-bioinformatics/Aoi"
+    },
+    {
+      "kind": "vendor",
+      "origin": "vendor/py_launch.cjs",
+      "path": "vendor/py_launch.cjs",
+      "pin": "9e0147a17695ce63fa73daf75d8195a4f49095bb",
+      "provenance": {
+        "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+        "path": "sakanalytics/vendor.lock.json",
+        "repo": "myon-bioinformatics/Aoi"
+      },
+      "source": "myon-bioinformatics/SakAnalytics",
+      "target": "myon-bioinformatics/Aoi"
+    },
+    {
+      "kind": "workflow-pin",
+      "path": ".github/workflows/ci.yml",
+      "pin": "1db35dd8eee11c5894872e0b383ae6c406cf738d",
+      "provenance": {
+        "commit": "7c0823b4e9c7ec541d1a1f14c77ac85b72b83cb3",
+        "path": ".github/workflows/ci.yml",
+        "repo": "myon-bioinformatics/TopOntoLogy"
+      },
+      "source": "myon-bioinformatics/TopOntoLogy",
+      "target": "astral-sh/setup-uv"
+    },
+    {
+      "kind": "workflow-pin",
+      "path": ".github/workflows/ci.yml",
+      "pin": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "provenance": {
+        "commit": "1909829db345870361ad5c6368bdf2adc199459c",
+        "path": ".github/workflows/ci.yml",
+        "repo": "myon-bioinformatics/OnTautoLogy"
+      },
+      "source": "myon-bioinformatics/OnTautoLogy",
+      "target": "actions/checkout"
+    },
+    {
+      "kind": "workflow-pin",
+      "path": ".github/workflows/ci.yml",
+      "pin": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "provenance": {
+        "commit": "7c0823b4e9c7ec541d1a1f14c77ac85b72b83cb3",
+        "path": ".github/workflows/ci.yml",
+        "repo": "myon-bioinformatics/TopOntoLogy"
+      },
+      "source": "myon-bioinformatics/TopOntoLogy",
+      "target": "actions/checkout"
+    },
+    {
+      "kind": "workflow-pin",
+      "path": ".github/workflows/ci.yml",
+      "pin": "68559e99cc807c1eb7e9238fd43a15bba460eec2",
+      "provenance": {
+        "commit": "1909829db345870361ad5c6368bdf2adc199459c",
+        "path": ".github/workflows/ci.yml",
+        "repo": "myon-bioinformatics/OnTautoLogy"
+      },
+      "source": "myon-bioinformatics/OnTautoLogy",
+      "target": "astral-sh/setup-uv"
+    },
+    {
+      "kind": "workflow-pin",
+      "path": ".github/workflows/ci.yml",
+      "pin": "8621f2261d694af0de35e103ad2387872ca10b99",
+      "provenance": {
+        "commit": "7c0823b4e9c7ec541d1a1f14c77ac85b72b83cb3",
+        "path": ".github/workflows/ci.yml",
+        "repo": "myon-bioinformatics/TopOntoLogy"
+      },
+      "source": "myon-bioinformatics/TopOntoLogy",
+      "target": "myon-bioinformatics/TaxOntOy"
+    },
+    {
+      "kind": "workflow-pin",
+      "path": ".github/workflows/ci.yml",
+      "pin": "8ca1ee5dc8c2714ddcdea6db6774f7168c0e617b",
+      "provenance": {
+        "commit": "7c0823b4e9c7ec541d1a1f14c77ac85b72b83cb3",
+        "path": ".github/workflows/ci.yml",
+        "repo": "myon-bioinformatics/TopOntoLogy"
+      },
+      "source": "myon-bioinformatics/TopOntoLogy",
+      "target": "myon-bioinformatics/ONTO"
+    },
+    {
+      "kind": "workflow-pin",
+      "path": ".github/workflows/ci.yml",
+      "pin": "949feb2413d6458794dcd2491c4babbbce0c15c1",
+      "provenance": {
+        "commit": "1909829db345870361ad5c6368bdf2adc199459c",
+        "path": ".github/workflows/ci.yml",
+        "repo": "myon-bioinformatics/OnTautoLogy"
+      },
+      "source": "myon-bioinformatics/OnTautoLogy",
+      "target": "actions/setup-node"
+    },
+    {
+      "kind": "workflow-pin",
+      "path": ".github/workflows/ci.yml",
+      "pin": "cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+      "provenance": {
+        "commit": "1909829db345870361ad5c6368bdf2adc199459c",
+        "path": ".github/workflows/ci.yml",
+        "repo": "myon-bioinformatics/OnTautoLogy"
+      },
+      "source": "myon-bioinformatics/OnTautoLogy",
+      "target": "actions/upload-artifact"
+    },
+    {
+      "kind": "workflow-pin",
+      "path": ".github/workflows/pages.yml",
+      "pin": "81f6aea6231d4490e581443fdeb43a09e6018ff0",
+      "provenance": {
+        "commit": "1909829db345870361ad5c6368bdf2adc199459c",
+        "path": ".github/workflows/pages.yml",
+        "repo": "myon-bioinformatics/OnTautoLogy"
+      },
+      "source": "myon-bioinformatics/OnTautoLogy",
+      "target": "myon-bioinformatics/myon-bioinformatics"
+    },
+    {
+      "kind": "workflow-pin",
+      "path": ".github/workflows/wave-relations.yml",
+      "pin": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "provenance": {
+        "commit": "1909829db345870361ad5c6368bdf2adc199459c",
+        "path": ".github/workflows/wave-relations.yml",
+        "repo": "myon-bioinformatics/OnTautoLogy"
+      },
+      "source": "myon-bioinformatics/OnTautoLogy",
+      "target": "actions/checkout"
+    },
+    {
+      "kind": "workflow-pin",
+      "path": ".github/workflows/wave-relations.yml",
+      "pin": "8621f2261d694af0de35e103ad2387872ca10b99",
+      "provenance": {
+        "commit": "1909829db345870361ad5c6368bdf2adc199459c",
+        "path": ".github/workflows/wave-relations.yml",
+        "repo": "myon-bioinformatics/OnTautoLogy"
+      },
+      "source": "myon-bioinformatics/OnTautoLogy",
+      "target": "myon-bioinformatics/TaxOntOy"
+    },
+    {
+      "kind": "workflow-pin",
+      "path": ".github/workflows/wave-relations.yml",
+      "pin": "d8880c9e55a0ce502dbf54a128bcaf471f0efc0e",
+      "provenance": {
+        "commit": "1909829db345870361ad5c6368bdf2adc199459c",
+        "path": ".github/workflows/wave-relations.yml",
+        "repo": "myon-bioinformatics/OnTautoLogy"
+      },
+      "source": "myon-bioinformatics/OnTautoLogy",
+      "target": "myon-bioinformatics/TopOntoLogy"
+    }
+  ],
+  "errors": [],
+  "inputs": [
+    {
+      "path": "fixtures/repos/manifest.json",
+      "sha256": "ea28d952c01992d1572d170b8f50abef0590edf2d21853c48cf4053d5957d41b"
+    },
+    {
+      "path": "fixtures/repos/sources/aoi/aoi.py",
+      "sha256": "57e55f6fc10ff782706877eef72f19c363ca6e694eabc5b668d1409f67f26cbc"
+    },
+    {
+      "path": "fixtures/repos/sources/aoi/blueprobe-vendor.lock.json",
+      "sha256": "353adacb36fa94060c6699267a45991105dceebe76780ceda2811724d7f0763d"
+    },
+    {
+      "path": "fixtures/repos/sources/aoi/child-heads.json",
+      "sha256": "247c1d921b5df8f2bc5f19b0c77d301ee7a40e6fa90635270a9f449efaea1bf1"
+    },
+    {
+      "path": "fixtures/repos/sources/aoi/dragowing-vendor.lock.json",
+      "sha256": "afefef58127e6e146bb5cd4c7b0ed529248f6af0ee4b6fd6c67896d2bb75c90a"
+    },
+    {
+      "path": "fixtures/repos/sources/aoi/nagoyaction-vendor.lock.json",
+      "sha256": "36605e236dc8af5bdf25a1ee0ac8e3794b9919eb22f861c640b436f747b11d06"
+    },
+    {
+      "path": "fixtures/repos/sources/aoi/pythdragoras-vendor.lock.json",
+      "sha256": "555f22fdf0b6f0db9f1766ea98f9cdbfc331b590cb0c81177e2055d7215b0e7a"
+    },
+    {
+      "path": "fixtures/repos/sources/aoi/queryu-vendor.lock.json",
+      "sha256": "100b2b610fc78d79f8ad44f7c70c729f8e6862b01f8b42ddbbc691531a87a9c5"
+    },
+    {
+      "path": "fixtures/repos/sources/aoi/sakanalytics-vendor.lock.json",
+      "sha256": "555f22fdf0b6f0db9f1766ea98f9cdbfc331b590cb0c81177e2055d7215b0e7a"
+    },
+    {
+      "path": "fixtures/repos/sources/aoi/vendor.lock.json",
+      "sha256": "e95ef04646ac02f8aed4760cbdee37d2542ec31c1234bcc98983ca103ae7157d"
+    },
+    {
+      "path": "fixtures/repos/sources/ontautology/ci.yml",
+      "sha256": "dfe57842c4e74c8af9f25aeb85e3fbe1b7f9912a445a48719c6ce2e09d551f50"
+    },
+    {
+      "path": "fixtures/repos/sources/ontautology/pages.yml",
+      "sha256": "94078163f1e08c4271f7a4232a3a99202331fb56b8599a1a0827c55aaeafcb09"
+    },
+    {
+      "path": "fixtures/repos/sources/ontautology/wave-relations.yml",
+      "sha256": "1f05e8c126a151840835630a5d283f8597d80cb9f507002a6f903db3be06b52f"
+    },
+    {
+      "path": "fixtures/repos/sources/topontology/ci.yml",
+      "sha256": "f7c266612829d3c254c649149e3a60589561d6d520b1f235bfa8eec7484a2b87"
+    }
+  ],
+  "mapping": [
+    {
+      "proposed": "subtree-of",
+      "relation": "subtree",
+      "source": "child-heads.json optional.subtree_prefix; gh_ops.py subtree-push; fleet kind subtree"
+    },
+    {
+      "proposed": "vendors",
+      "relation": "vendor",
+      "source": "vendor.lock.json vendor-lock/1 files; fleet kind vendor"
+    },
+    {
+      "proposed": "pins",
+      "relation": "workflow-pin",
+      "source": "workflow uses owner/repo@SHA and checkout repository plus ref; fleet kind workflow-pin"
+    },
+    {
+      "proposed": "consumes",
+      "relation": "consumes",
+      "source": "aoi.py SIBLINGS; fleet shared-tools is a separate consumer record"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "actions/checkout",
+      "type": "repository"
+    },
+    {
+      "id": "actions/setup-node",
+      "type": "repository"
+    },
+    {
+      "id": "actions/upload-artifact",
+      "type": "repository"
+    },
+    {
+      "id": "astral-sh/setup-uv",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/Aoi",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/BlueProbe",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/DRAgoWing",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/NagoyAction",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/ONTO",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/OnTautoLogy",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/PythDRagoras",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/QueRyu",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/SakAnalytics",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/TaxOntOy",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/TopOntoLogy",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/markdown",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/myon-bioinformatics",
+      "type": "repository"
+    }
+  ],
+  "ok": true,
+  "provenance": [
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "path": "aoi.py",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "siblings"
+    },
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "path": "blueprobe/vendor.lock.json",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "lock"
+    },
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "path": "child-heads.json",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "heads"
+    },
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "path": "dragowing/vendor.lock.json",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "lock"
+    },
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "path": "nagoyaction/vendor.lock.json",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "lock"
+    },
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "path": "pythdragoras/vendor.lock.json",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "lock"
+    },
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "path": "queryu/vendor.lock.json",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "lock"
+    },
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "path": "sakanalytics/vendor.lock.json",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "lock"
+    },
+    {
+      "commit": "320126983a992e30730350c5e9b0e4051c0d33d4",
+      "path": "vendor.lock.json",
+      "repo": "myon-bioinformatics/Aoi",
+      "role": "lock"
+    },
+    {
+      "commit": "1909829db345870361ad5c6368bdf2adc199459c",
+      "path": ".github/workflows/ci.yml",
+      "repo": "myon-bioinformatics/OnTautoLogy",
+      "role": "workflow"
+    },
+    {
+      "commit": "1909829db345870361ad5c6368bdf2adc199459c",
+      "path": ".github/workflows/pages.yml",
+      "repo": "myon-bioinformatics/OnTautoLogy",
+      "role": "workflow"
+    },
+    {
+      "commit": "1909829db345870361ad5c6368bdf2adc199459c",
+      "path": ".github/workflows/wave-relations.yml",
+      "repo": "myon-bioinformatics/OnTautoLogy",
+      "role": "workflow"
+    },
+    {
+      "commit": "7c0823b4e9c7ec541d1a1f14c77ac85b72b83cb3",
+      "path": ".github/workflows/ci.yml",
+      "repo": "myon-bioinformatics/TopOntoLogy",
+      "role": "workflow"
+    }
+  ],
+  "tool": "taxontoy",
+  "version": "0.4.0"
+}

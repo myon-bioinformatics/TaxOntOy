@@ -1,10 +1,11 @@
 """Validate TaxOntOy's relation table, measure coverage, and rank unclassified names.
 
-Paths come from arguments or from TAXONTOY_TABLE and ONTO_CHECKOUT.
+Paths come from arguments or from TAXONTOY_TABLE, TAXONTOY_GRAPH, TAXONTOY_MANIFEST, and ONTO_CHECKOUT.
 """
 from __future__ import annotations
 
 import argparse
+import ast
 import datetime
 import hashlib
 import importlib.util
@@ -15,10 +16,37 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 SCHEMA_ID = "taxontoy-relations/2"
 WAVES = ("audit", "concepts", "cases")
+REPO_PROFILE = "repos"
 TOP_KEYS = {"schema", *WAVES, "direction", "excluded", "properties"}
+ALLOWED_KEYS = TOP_KEYS | {REPO_PROFILE}
+_SHA = re.compile(r"[0-9a-f]{40}")
+_OWNER = re.compile(r"[A-Za-z0-9_.-]+")
+_ROLES = {"heads", "lock", "siblings", "workflow"}
+MAPPING = (
+    {
+        "proposed": "subtree-of",
+        "relation": "subtree",
+        "source": "child-heads.json optional.subtree_prefix; gh_ops.py subtree-push; fleet kind subtree",
+    },
+    {
+        "proposed": "vendors",
+        "relation": "vendor",
+        "source": "vendor.lock.json vendor-lock/1 files; fleet kind vendor",
+    },
+    {
+        "proposed": "pins",
+        "relation": "workflow-pin",
+        "source": "workflow uses owner/repo@SHA and checkout repository plus ref; fleet kind workflow-pin",
+    },
+    {
+        "proposed": "consumes",
+        "relation": "consumes",
+        "source": "aoi.py SIBLINGS; fleet shared-tools is a separate consumer record",
+    },
+)
 CLASS_FLAGS = ("acyclic", "symmetric", "transitive")
 RELATION_FLAGS = (*CLASS_FLAGS, "disjoint_with", "inverse_of")
 CLASS_DIRECTION = {
@@ -32,6 +60,13 @@ CLASS_DIRECTION = {
     "similarity": "mutual",
     "unknown-element": "forward",
 }
+
+
+def _profile_names(data):
+    names = list(WAVES)
+    if isinstance(data, dict) and REPO_PROFILE in data:
+        names.append(REPO_PROFILE)
+    return names
 
 
 def _sha256(path):
@@ -126,7 +161,7 @@ def _validate_properties(data, classified, errors):
     known = set(classified)
     excluded = data.get("excluded")
     if isinstance(excluded, dict):
-        for wave in WAVES:
+        for wave in _profile_names(data):
             values = excluded.get(wave)
             if isinstance(values, list):
                 known.update(name for name in values if _name_ok(name))
@@ -241,7 +276,7 @@ def validate_document(data):
     if not isinstance(data, dict):
         return ["table must be a JSON object"]
     missing = sorted(TOP_KEYS - set(data))
-    extra = sorted(set(data) - TOP_KEYS)
+    extra = sorted(set(data) - ALLOWED_KEYS)
     for key in missing:
         errors.append(f"missing key: {key}")
     for key in extra:
@@ -250,7 +285,8 @@ def validate_document(data):
         errors.append(f"schema: expected {SCHEMA_ID}")
 
     classified = {}
-    for wave in WAVES:
+    profiles = _profile_names(data)
+    for wave in profiles:
         mapping = data.get(wave)
         if not isinstance(mapping, dict):
             errors.append(f"{wave}: profile must be an object")
@@ -294,9 +330,9 @@ def validate_document(data):
     if not isinstance(excluded, dict):
         errors.append("excluded: must be an object")
         excluded = {}
-    for key in sorted(set(excluded) - set(WAVES)):
+    for key in sorted(set(excluded) - set(profiles)):
         errors.append(f"excluded: unknown profile {key}")
-    for wave in WAVES:
+    for wave in profiles:
         names = excluded.get(wave)
         if not isinstance(names, list):
             errors.append(f"excluded.{wave}: must be an array")
@@ -380,7 +416,7 @@ def _alias_candidates(edges_by_name):
 
 
 def _class_of(table, relation):
-    for wave in WAVES:
+    for wave in _profile_names(table):
         mapping = table.get(wave)
         if isinstance(mapping, dict) and relation in mapping:
             return mapping[relation]
@@ -599,8 +635,8 @@ def _usable_relation_name(edge):
 
 
 def _elsewhere(table, profile, relation):
-    for wave in WAVES:
-        if wave != profile and relation in table[wave]:
+    for wave in _profile_names(table):
+        if wave != profile and isinstance(table.get(wave), dict) and relation in table[wave]:
             return wave
     return None
 
@@ -673,6 +709,487 @@ def rank_unclassified(table, edges, profile):
         "nameless": {"edges": nameless},
         "ranking": ranking,
     }
+
+
+def _loads(text, where):
+    def pairs(items):
+        obj = {}
+        for key, value in items:
+            if key in obj:
+                raise ValueError(f"{where}: duplicate key: {key}")
+            obj[key] = value
+        return obj
+
+    try:
+        return json.loads(text, object_pairs_hook=pairs)
+    except json.JSONDecodeError:
+        raise ValueError(f"{where}: invalid JSON") from None
+
+
+def _norm_path(value):
+    if not isinstance(value, str) or value != value.strip() or value.strip("/") == "":
+        return None
+    parts = value.strip("/").split("/")
+    for part in parts:
+        if part in {"", ".", ".."}:
+            return None
+    return "/".join(parts)
+
+
+def _paths_overlap(left, right):
+    return left == right or left.startswith(right + "/") or right.startswith(left + "/")
+
+
+def _provenance(row):
+    return {"commit": row["commit"], "path": row["path"], "repo": row["repo"]}
+
+
+def _manifest_rows(path):
+    data = _load_json(path)
+    if not isinstance(data, dict) or not isinstance(data.get("sources"), list) or not data["sources"]:
+        raise ValueError("manifest must be an object with a non-empty sources array")
+    root = Path(path).parent
+    rows = []
+    for index, item in enumerate(data["sources"]):
+        where = f"sources[{index}]"
+        if not isinstance(item, dict):
+            raise ValueError(f"{where}: must be an object")
+        for key in ("commit", "file", "path", "repo", "role"):
+            if not _name_ok(item.get(key)):
+                raise ValueError(f"{where}: missing {key}")
+        if item["role"] not in _ROLES:
+            raise ValueError(f"{where}: unknown role {item['role']}")
+        if _SHA.fullmatch(item["commit"]) is None:
+            raise ValueError(f"{where}: commit must be 40 hex characters")
+        relative = Path(item["file"])
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError(f"{where}: file must stay under the manifest directory")
+        full = root / relative
+        if not full.is_file():
+            raise ValueError(f"{where}: file is missing")
+        rows.append({
+            "commit": item["commit"],
+            "full": full,
+            "path": item["path"],
+            "repo": item["repo"],
+            "role": item["role"],
+        })
+    return rows
+
+
+def _prefix_rows(rows):
+    found = []
+    for row in rows:
+        if row["role"] != "heads":
+            continue
+        data = _loads(row["text"], row["path"])
+        heads = data.get("heads") if isinstance(data, dict) else None
+        if not isinstance(heads, dict):
+            raise ValueError(f"{row['path']}: heads must be an object")
+        for child, body in heads.items():
+            if not _name_ok(child) or not isinstance(body, dict):
+                raise ValueError(f"{row['path']}: each head must name a repository")
+            optional = body.get("optional")
+            if optional is None:
+                continue
+            if not isinstance(optional, dict):
+                raise ValueError(f"{row['path']}: optional must be an object")
+            prefix = optional.get("subtree_prefix")
+            if prefix is None:
+                continue
+            if _norm_path(prefix) != prefix or "/" in prefix:
+                raise ValueError(f"{row['path']}: subtree prefix must be one path segment")
+            found.append({"child": child, "hub": row["repo"], "prefix": prefix, "row": row})
+    return found
+
+
+def _subtree_edges(records):
+    return [
+        {
+            "kind": "subtree",
+            "path": item["prefix"],
+            "provenance": _provenance(item["row"]),
+            "source": item["hub"],
+            "target": item["child"],
+        }
+        for item in records
+    ]
+
+
+def _lock_holder(row, records):
+    matches = [
+        item for item in records
+        if item["hub"] == row["repo"] and (
+            row["path"] == f"{item['prefix']}/vendor.lock.json" or row["path"].startswith(item["prefix"] + "/")
+        )
+    ]
+    if not matches:
+        return row["repo"]
+    children = {item["child"] for item in matches}
+    if len(children) != 1:
+        raise ValueError(f"{row['path']}: subtree prefix matches more than one repository")
+    matches.sort(key=lambda item: len(item["prefix"]))
+    return matches[-1]["child"]
+
+
+def _lock_edges(row, records):
+    data = _loads(row["text"], row["path"])
+    if not isinstance(data, dict) or data.get("schema") != "vendor-lock/1":
+        raise ValueError(f"{row['path']}: expected vendor-lock/1")
+    files = data.get("files")
+    if not isinstance(files, list):
+        raise ValueError(f"{row['path']}: files must be an array")
+    holder = _lock_holder(row, records)
+    edges = []
+    for index, item in enumerate(files):
+        where = f"{row['path']}: files[{index}]"
+        if not isinstance(item, dict):
+            raise ValueError(f"{where} must be an object")
+        repository = item.get("repository")
+        source = item.get("source")
+        destination = item.get("destination")
+        if not _name_ok(repository) or _norm_path(source) != source or _norm_path(destination) != destination:
+            raise ValueError(f"{where} must name repository, source, and destination")
+        edge = {
+            "kind": "vendor",
+            "origin": source,
+            "path": destination,
+            "provenance": _provenance(row),
+            "source": holder,
+            "target": repository,
+        }
+        pin = item.get("commit")
+        if pin is not None:
+            if not isinstance(pin, str) or _SHA.fullmatch(pin) is None:
+                raise ValueError(f"{where} commit must be 40 hex characters")
+            edge["pin"] = pin
+        edges.append(edge)
+    return edges
+
+
+def _literal(node, where):
+    if isinstance(node, ast.Constant):
+        return node.value
+    if isinstance(node, ast.List):
+        return [_literal(item, where) for item in node.elts]
+    if isinstance(node, ast.Tuple):
+        copied = []
+        for item in node.elts:
+            copied.append(_literal(item, where))
+        return (*copied,)
+    if isinstance(node, ast.Dict):
+        return {
+            _literal(key, where): _literal(value, where)
+            for key, value in zip(node.keys, node.values, strict=True)
+        }
+    raise ValueError(f"{where}: SIBLINGS must be literal")
+
+
+def _siblings_table(text, where):
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        raise ValueError(f"{where}: SIBLINGS must be literal") from None
+    table = None
+    for node in tree.body:
+        target = value = None
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "SIBLINGS":
+            target, value = node.target, node.value
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target, value = node.targets[0], node.value
+        if isinstance(target, ast.Name) and target.id == "SIBLINGS":
+            table = _literal(value, where)
+            if not isinstance(table, dict):
+                raise ValueError(f"{where}: SIBLINGS must be a dict")
+        elif (
+            isinstance(target, ast.Subscript)
+            and isinstance(target.value, ast.Name)
+            and target.value.id == "SIBLINGS"
+        ):
+            if not isinstance(table, dict):
+                raise ValueError(f"{where}: SIBLINGS must be a dict")
+            table[_literal(target.slice, where)] = _literal(value, where)
+    if not isinstance(table, dict):
+        raise ValueError(f"{where}: SIBLINGS not found")
+    return table
+
+
+def _child_repo(name, records, hub):
+    matches = [item["child"] for item in records if item["hub"] == hub and item["prefix"] == name]
+    if len(set(matches)) > 1:
+        raise ValueError(f"subtree prefix {name} matches more than one repository")
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def _consume_edges(row, records):
+    table = _siblings_table(row["text"], row["path"])
+    edges = []
+    for child_name in sorted(table):
+        child = _child_repo(child_name, records, row["repo"])
+        if child is None:
+            raise ValueError(f"{row['path']}: SIBLINGS key {child_name} is not a subtree prefix")
+        directories = table[child_name]
+        if not isinstance(directories, (list, tuple)) or not directories:
+            raise ValueError(f"{row['path']}: SIBLINGS {child_name} must list directories")
+        for directory in directories:
+            if not _name_ok(directory):
+                raise ValueError(f"{row['path']}: sibling directory must be a non-empty string")
+            sibling = _child_repo(directory.split("/")[0], records, row["repo"])
+            if sibling is None or sibling == child:
+                continue
+            edges.append({
+                "kind": "consumes",
+                "origin": directory,
+                "provenance": _provenance(row),
+                "source": child,
+                "target": sibling,
+            })
+    return edges
+
+
+def _github_repo(spec):
+    parts = spec.split("/")
+    if len(parts) < 2:
+        return None
+    owner, name = parts[0], parts[1]
+    if _OWNER.fullmatch(owner) is None or _OWNER.fullmatch(name) is None:
+        return None
+    if owner.startswith(".") or name.startswith("."):
+        return None
+    return f"{owner}/{name}"
+
+
+def _workflow_pins(text):
+    found = []
+    lines = text.splitlines()
+    for line in lines:
+        match = re.match(r"^\s*(?:-\s+)?uses:\s*(\S+)@([0-9a-f]{40})\b", line)
+        if match is None:
+            continue
+        repo = _github_repo(match.group(1))
+        if repo is None:
+            continue
+        found.append((repo, match.group(2)))
+    index = 0
+    while index < len(lines):
+        step = re.match(r"^(\s*)-\s+\S", lines[index])
+        if step is None:
+            index += 1
+            continue
+        indent = len(step.group(1))
+        block = []
+        index += 1
+        while index < len(lines):
+            nxt = re.match(r"^(\s*)-\s+\S", lines[index])
+            if nxt and len(nxt.group(1)) <= indent:
+                break
+            block.append(lines[index])
+            index += 1
+        repository = ref = None
+        for line in block:
+            repo_match = re.match(r"^\s+repository:\s*(\S+)\s*$", line)
+            ref_match = re.match(r"^\s+ref:\s*([0-9a-f]{40})\b", line)
+            if repo_match:
+                repository = repo_match.group(1)
+            if ref_match:
+                ref = ref_match.group(1)
+        if repository and ref and _github_repo(repository) == repository:
+            found.append((repository, ref))
+    return found
+
+
+def _pin_edges(row):
+    edges = []
+    seen = set()
+    for repo, pin in _workflow_pins(row["text"]):
+        key = (repo, pin, row["path"])
+        if key in seen:
+            continue
+        seen.add(key)
+        edges.append({
+            "kind": "workflow-pin",
+            "path": row["path"],
+            "pin": pin,
+            "provenance": _provenance(row),
+            "source": row["repo"],
+            "target": repo,
+        })
+    return edges
+
+
+def build_repo_graph(rows):
+    """OTL nodes and edges for repository relations. Rows are manifest entries plus text."""
+    records = _prefix_rows(rows)
+    edges = _subtree_edges(records)
+    for row in rows:
+        if row["role"] == "lock":
+            edges.extend(_lock_edges(row, records))
+        elif row["role"] == "siblings":
+            edges.extend(_consume_edges(row, records))
+        elif row["role"] == "workflow":
+            edges.extend(_pin_edges(row))
+    edges.sort(key=lambda edge: json.dumps(edge, ensure_ascii=False, sort_keys=True))
+    names = sorted({edge["source"] for edge in edges} | {edge["target"] for edge in edges})
+    provenance = [
+        {"commit": row["commit"], "path": row["path"], "repo": row["repo"], "role": row["role"]}
+        for row in rows
+    ]
+    provenance.sort(key=lambda item: (item["repo"], item["path"], item["role"]))
+    return {
+        "edges": edges,
+        "mapping": [dict(item) for item in MAPPING],
+        "nodes": [{"id": name, "type": "repository"} for name in names],
+        "provenance": provenance,
+    }
+
+
+def _graph_from_manifest(path):
+    rows = _manifest_rows(path)
+    loaded = []
+    for row in rows:
+        loaded.append({
+            "commit": row["commit"],
+            "path": row["path"],
+            "repo": row["repo"],
+            "role": row["role"],
+            "text": row["full"].read_text(encoding="utf-8"),
+        })
+    return build_repo_graph(loaded), [path, *(str(row["full"]) for row in rows)]
+
+
+def _holder_path(edge):
+    if "path" not in edge:
+        return None
+    path = _norm_path(edge.get("path"))
+    source = edge.get("source")
+    if _name_ok(source) and path is not None:
+        return source, path
+    return None
+
+
+def _disjoint_hit(left, right):
+    held_left = _holder_path(left)
+    held_right = _holder_path(right)
+    if held_left is not None and held_right is not None:
+        return held_left[0] == held_right[0] and _paths_overlap(held_left[1], held_right[1])
+    if held_left is not None or held_right is not None:
+        return False
+    return (
+        _name_ok(left.get("source"))
+        and _name_ok(left.get("target"))
+        and left.get("source") == right.get("source")
+        and left.get("target") == right.get("target")
+    )
+
+
+def _pair_record(left, right):
+    held_left = _holder_path(left)
+    held_right = _holder_path(right)
+    if held_left is not None and held_right is not None and held_left[0] == held_right[0]:
+        longer, shorter = (held_left[1], held_right[1]) if len(held_left[1]) >= len(held_right[1]) else (held_right[1], held_left[1])
+        record = {"path": longer, "repository": held_left[0]}
+        if shorter != longer:
+            record["prefix"] = shorter
+        return record
+    return {"source": left.get("source"), "target": left.get("target")}
+
+
+def property_violations(table, edges):
+    """Edges that break a declared disjoint_with. Each hit keeps both edges."""
+    grouped = defaultdict(list)
+    skipped = 0
+    for edge in edges:
+        name = _usable_relation_name(edge)
+        if name is None:
+            skipped += 1
+            continue
+        grouped[name].append(edge)
+    props = table.get("properties") if isinstance(table, dict) else None
+    relations = props.get("relations") if isinstance(props, dict) else None
+    declared = []
+    if isinstance(relations, dict):
+        for _name, body in relations.items():
+            if not isinstance(body, dict):
+                continue
+            items = body.get("disjoint_with")
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                partner = item.get("relation") if isinstance(item, dict) else None
+                if _name_ok(partner):
+                    declared.append((_name, partner))
+    seen = set()
+    violations = []
+    for left_name, right_name in declared:
+        key = tuple(sorted((left_name, right_name)))
+        if key in seen or left_name == right_name:
+            continue
+        seen.add(key)
+        for left in grouped.get(left_name, ()):
+            for right in grouped.get(right_name, ()):
+                if not _disjoint_hit(left, right):
+                    continue
+                chosen = sorted((left, right), key=lambda edge: json.dumps(edge, ensure_ascii=False, sort_keys=True))
+                violations.append({
+                    "edges": chosen,
+                    "pair": _pair_record(left, right),
+                    "property": "disjoint_with",
+                    "relations": list(key),
+                })
+    violations.sort(key=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))
+    return violations, skipped
+
+
+def _double_distribution(violations):
+    pairs = []
+    seen = set()
+    for item in violations:
+        if item["relations"] != ["subtree", "vendor"]:
+            continue
+        pair = item["pair"]
+        if "repository" not in pair or "path" not in pair:
+            continue
+        key = (pair["repository"], pair["path"])
+        if key in seen:
+            continue
+        seen.add(key)
+        row = {"path": pair["path"], "repository": pair["repository"]}
+        if "prefix" in pair:
+            row["prefix"] = pair["prefix"]
+        pairs.append(row)
+    pairs.sort(key=lambda item: (item["repository"], item["path"]))
+    return {"count": len(pairs), "pairs": pairs}
+
+
+def _relation_counts(edges):
+    counts = defaultdict(int)
+    for edge in edges:
+        name = _usable_relation_name(edge)
+        if name is not None:
+            counts[name] += 1
+    return {name: counts[name] for name in sorted(counts)}
+
+
+def _read_edge_graph(path):
+    data = _load_json(path)
+    if not isinstance(data, dict) or not isinstance(data.get("edges"), list):
+        raise ValueError(f"{path}: graph JSON must be an object with an edges array")
+    return data
+
+
+def _opt_path(value):
+    if value is None:
+        return ""
+    return _clean(value)
+
+
+def _choice(args, name, env_name):
+    text = _opt_path(getattr(args, name, None))
+    if text:
+        return text
+    return _clean(os.environ.get(env_name))
 
 
 def _inputs(paths):
@@ -765,6 +1282,31 @@ def _render_text(payload):
             for alias in row["alias_candidates"]:
                 lines.append(f"alias {alias['detection']} {' '.join(alias['relations'])}")
         lines.append(f"nameless {payload['nameless']['edges']}")
+    if payload.get("command") == "graph":
+        lines.append(f"nodes {len(payload['nodes'])}")
+        lines.append(f"edges {len(payload['edges'])}")
+        for edge in payload["edges"]:
+            path = f" path {edge['path']}" if "path" in edge else ""
+            origin = f" origin {edge['origin']}" if "origin" in edge else ""
+            pin = f" pin {edge['pin']}" if "pin" in edge else ""
+            lines.append(f"edge {edge['kind']} {edge['source']} {edge['target']}{path}{origin}{pin}")
+        for item in payload["mapping"]:
+            lines.append(f"mapping {item['proposed']} {item['relation']}")
+    if "violations" in payload:
+        lines.append(f"violations {len(payload['violations'])}")
+        lines.append(f"double_distribution {payload['double_distribution']['count']}")
+        lines.append(f"skipped {payload['skipped']}")
+        for item in payload["violations"]:
+            pair = item["pair"]
+            if "path" in pair:
+                ident = f"repository {pair['repository']} path {pair['path']}"
+            else:
+                ident = f"source {pair['source']} target {pair['target']}"
+            lines.append(f"violation {item['property']} {' '.join(item['relations'])} {ident}")
+            for edge in item["edges"]:
+                kind = edge.get("kind", edge.get("relation"))
+                path = f" path {edge['path']}" if "path" in edge else ""
+                lines.append(f"edge {kind} {edge['source']} {edge['target']}{path}")
     return "\n".join(lines) + "\n"
 
 
@@ -817,7 +1359,8 @@ def _validate_payload(path, data, errors):
         "version": __version__,
     }
     if not errors:
-        payload["excluded"] = {wave: list(data["excluded"][wave]) for wave in WAVES}
+        profiles = _profile_names(data)
+        payload["excluded"] = {wave: list(data["excluded"][wave]) for wave in profiles}
         payload["properties"] = _property_rows(data)
         payload["relations"] = [
             {
@@ -826,7 +1369,7 @@ def _validate_payload(path, data, errors):
                 "profile": wave,
                 "relation": relation,
             }
-            for wave in WAVES
+            for wave in profiles
             for relation in sorted(data[wave])
         ]
     return payload
@@ -892,10 +1435,40 @@ def main(argv=None):
     rank.add_argument("--profile", required=True, choices=WAVES)
     _add_format(rank, "json")
 
+    graph_cmd = commands.add_parser("graph", help="build an OTL graph of repository relations from explicit paths")
+    graph_cmd.add_argument("--manifest", type=Path)
+    _add_format(graph_cmd, "json")
+
+    props = commands.add_parser("properties", help="report declared property violations with the offending edges")
+    props.add_argument("table", nargs="?", type=Path)
+    props.add_argument("--graph", type=Path)
+    props.add_argument("--manifest", type=Path)
+    props.add_argument("--strict", action="store_true", help="exit 2 when a declared property is violated")
+    _add_format(props, "json")
+
     args = parser.parse_args(argv)
     try:
         fmt = _format(args)
         output = _clean(args.output) or None
+        if args.command == "graph":
+            manifest = _choice(args, "manifest", "TAXONTOY_MANIFEST")
+            if not manifest:
+                raise ValueError("pass --manifest or set TAXONTOY_MANIFEST")
+            built, inputs = _graph_from_manifest(manifest)
+            payload = {
+                "command": "graph",
+                "edges": built["edges"],
+                "errors": [],
+                "inputs": _inputs(inputs),
+                "mapping": built["mapping"],
+                "nodes": built["nodes"],
+                "ok": True,
+                "provenance": built["provenance"],
+                "tool": "taxontoy",
+                "version": __version__,
+            }
+            _emit(_render(payload, fmt), output)
+            return 0
         table_path = _table_path(args)
         data = _load_json(table_path)
         errors = validate_document(data)
@@ -930,6 +1503,36 @@ def main(argv=None):
             }
             _emit(_render(payload, fmt), output)
             return 0
+        if args.command == "properties":
+            graph_path = _choice(args, "graph", "TAXONTOY_GRAPH")
+            manifest = _choice(args, "manifest", "TAXONTOY_MANIFEST")
+            if bool(graph_path) == bool(manifest):
+                raise ValueError("pass --graph or --manifest")
+            if manifest:
+                built, inputs = _graph_from_manifest(manifest)
+                edges = built["edges"]
+                input_paths = [table_path, *inputs]
+            else:
+                document = _read_edge_graph(graph_path)
+                edges = document["edges"]
+                input_paths = [table_path, graph_path]
+            violations, skipped = property_violations(data, edges)
+            payload = {
+                "command": "properties",
+                "counts": _relation_counts(edges),
+                "double_distribution": _double_distribution(violations),
+                "errors": [],
+                "inputs": _inputs(input_paths),
+                "ok": not violations,
+                "skipped": skipped,
+                "tool": "taxontoy",
+                "version": __version__,
+                "violations": violations,
+            }
+            _emit(_render(payload, fmt), output)
+            if violations and args.strict:
+                return 2
+            return 0 if payload["ok"] else 1
         graphs, types, graph_paths = _parse_graphs(args.graph)
         if args.command == "candidates":
             waves = {}

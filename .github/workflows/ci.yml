@@ -82,6 +82,16 @@ jobs:
             --format json \
             --output build/candidates.json
           diff -u candidates.json build/candidates.json
+          uv run --no-project python -S taxontoy.py graph \
+            --manifest fixtures/repos/manifest.json \
+            --format json \
+            --output build/repos-graph.json
+          diff -u fixtures/repos/graph.json build/repos-graph.json
+          uv run --no-project python -S taxontoy.py properties otl-relations.json \
+            --graph fixtures/repos/graph.json \
+            --format json \
+            --output build/repos-properties.json
+          diff -u repos-properties.json build/repos-properties.json
           for profile in audit concepts cases; do
             uv run --no-project python -S taxontoy.py rank-unclassified "build/${profile}.json" otl-relations.json \
               --profile "$profile" \

@@ -10,6 +10,10 @@
     "audit": {"$ref": "#/$defs/profile"},
     "concepts": {"$ref": "#/$defs/profile"},
     "cases": {"$ref": "#/$defs/profile"},
+    "repos": {
+      "description": "Optional profile of relations between repositories. Documents that omit it stay valid taxontoy-relations/2.",
+      "$ref": "#/$defs/profile"
+    },
     "direction": {
       "type": "object",
       "description": "Declared direction of every classified relation. JSON object keys must be unique; the Python validator rejects duplicates.",
@@ -22,7 +26,8 @@
       "properties": {
         "audit": {"$ref": "#/$defs/nameList"},
         "concepts": {"$ref": "#/$defs/nameList"},
-        "cases": {"$ref": "#/$defs/nameList"}
+        "cases": {"$ref": "#/$defs/nameList"},
+        "repos": {"$ref": "#/$defs/nameList"}
       }
     },
     "properties": {
