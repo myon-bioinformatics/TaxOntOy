@@ -27,6 +27,14 @@
 
 パスの前後の空白は除きます。空白だけなら、その引数や環境変数は未設定です。
 
+## 未分類の順位
+
+`taxontoy rank-unclassified` は、1つの弾のグラフについて、その弾の分類に入っていない関係名を辺の多い順に並べます。数は、その名前をその弾の分類へ足したときに分類済みになる辺の本数です。除外リストの名前も、表に無い名前も、順位に入ります。行の `status` は `excluded` と `unclassified` で分かれます。集計も同じで、分類済み、除外、表に無い未分類、名前の無い辺を別々に数えます。四つを足すと辺の全体です。同じ本数は関係名の昇順です。出力の順はこれで決まります。
+
+辺の関係名は `kind` があればそれ、無ければ `relation` です。`kind` が空、文字列でない、前後に空白が付いているときは、`relation` があってもそちらには倒しません。関係名が無い辺、文字列でない辺は順位に混ぜず、`nameless` として数えます。捨てません。端点が欠けていても、使える関係名があればその名前の本数に入ります。
+
+別名の候補は、大文字小文字、区切り（`dependsOn` と `depends_on`）、端点がちょうど逆向きの組です。候補は順位の横に出すだけで、辺は足しません。分類済みの名前も候補に出ます。別の弾で分類済みの名前は `elsewhere` にその弾を書きます。
+
 ```sh
 python -S taxontoy.py validate otl-relations.json
 python -S taxontoy.py validate otl-relations.json --json
@@ -41,13 +49,16 @@ python -S taxontoy.py candidates otl-relations.json \
   --graph concepts=build/concepts.json \
   --graph cases=build/cases.json \
   --format json
+python -S taxontoy.py rank-unclassified build/audit.json otl-relations.json \
+  --profile audit \
+  --format json
 ```
 
-`--json` は `--format json` の省略です。両方を矛盾させて渡すと失敗します。`validate` の既定は text、`coverage` の既定は json です。報告にはツールの版、入力パス、各ファイルの sha256 が入ります。標準出力か `--output` で指定したファイル以外には書きません。表が壊れている、被覆が閉じていないときは終了コード 1、`--strict` のとき被覆の失敗は 2 です。
+`--json` は `--format json` の省略です。両方を矛盾させて渡すと失敗します。`validate` の既定は text、`coverage` と `candidates` と `rank-unclassified` の既定は json です。報告にはツールの版、入力パス、各ファイルの sha256 が入ります。標準出力か `--output` で指定したファイル以外には書きません。表が壊れている、被覆が閉じていないときは終了コード 1、`--strict` のとき被覆の失敗は 2 です。順位の報告は、表を読めれば未分類や名前の無い辺があっても 0 です。
 
 ## 固定したグラフとの差分
 
-`coverage.json` と `candidates.json` は、ONTO の main への第一親マージ `8ca1ee5dc8c2714ddcdea6db6774f7168c0e617b` と、OnTautoLogy の main への第一親マージ `b062960e3ef63aa80d6d4c9b6e028219f1690bc4` から作った報告です。CI は同じ手順で作り直し、差分があれば失敗します。推移の成立と、宣言した非循環をグラフ上で証明することはここではありません。閉路の列挙は ONTO、サンプルのノード列は TopOntoLogy に残します。
+`coverage.json`、`candidates.json`、`ranking-audit.json`、`ranking-concepts.json`、`ranking-cases.json` は、ONTO の main への第一親マージ `8ca1ee5dc8c2714ddcdea6db6774f7168c0e617b` と、OnTautoLogy の main への第一親マージ `b062960e3ef63aa80d6d4c9b6e028219f1690bc4` から作った報告です。CI は同じ手順で作り直し、差分があれば失敗します。推移の成立と、宣言した非循環をグラフ上で証明することはここではありません。閉路の列挙は ONTO、サンプルのノード列は TopOntoLogy に残します。
 
 Python 3.11 以降です。依存パッケージはありません。`since` は ASCII の `YYYY-MM-DD` だけです。テストは次です。テスト自身が行の実行を数えるため、プロセス内にトレーサを置きます。別のカバレッジ計測を同じプロセスに重ねると、プロセス内の行が数え漏れます。
 

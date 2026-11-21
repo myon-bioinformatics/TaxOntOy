@@ -1,0 +1,261 @@
+{
+  "command": "rank-unclassified",
+  "counts": {
+    "classified": 38,
+    "edges": 2342,
+    "excluded": 2304,
+    "nameless": 0,
+    "unclassified": 0
+  },
+  "errors": [],
+  "inputs": [
+    {
+      "path": "build/audit.json",
+      "sha256": "a6335589de2787391af0bd394d4d534ee4ddf978dbeb80d95f4a544d0d570639"
+    },
+    {
+      "path": "otl-relations.json",
+      "sha256": "141bfc1df14eec80ca7dedd5dd5f1310b839a675d14aa726b14133884d0f8afb"
+    }
+  ],
+  "nameless": {
+    "edges": 0
+  },
+  "ok": true,
+  "profile": "audit",
+  "ranking": [
+    {
+      "alias_candidates": [],
+      "edges": 691,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 1,
+      "relation": "belongsTo",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 564,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 2,
+      "relation": "changesFile",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 564,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 3,
+      "relation": "updates",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 209,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 4,
+      "relation": "hasRun",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 93,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 5,
+      "relation": "runsAt",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 25,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 6,
+      "relation": "overlapsWith",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 14,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 7,
+      "relation": "derived_from",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 14,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 8,
+      "relation": "hasBase",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 14,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 9,
+      "relation": "hasHead",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 14,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 10,
+      "relation": "hasMain",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [
+        {
+          "detection": "inverse-pair",
+          "folded": false,
+          "relations": [
+            "has_status",
+            "observes"
+          ]
+        },
+        {
+          "detection": "inverse-pair",
+          "folded": false,
+          "relations": [
+            "has_status",
+            "targets"
+          ]
+        }
+      ],
+      "edges": 14,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 11,
+      "relation": "has_status",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 14,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 12,
+      "relation": "integrates_into",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [
+        {
+          "detection": "inverse-pair",
+          "folded": false,
+          "relations": [
+            "has_status",
+            "observes"
+          ]
+        }
+      ],
+      "edges": 14,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 13,
+      "relation": "observes",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [
+        {
+          "detection": "inverse-pair",
+          "folded": false,
+          "relations": [
+            "has_status",
+            "targets"
+          ]
+        }
+      ],
+      "edges": 14,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 14,
+      "relation": "targets",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 14,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 15,
+      "relation": "targetsBranch",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [
+        {
+          "detection": "inverse-pair",
+          "folded": false,
+          "relations": [
+            "blocks",
+            "dependsOn"
+          ]
+        },
+        {
+          "detection": "inverse-pair",
+          "folded": false,
+          "relations": [
+            "blocks",
+            "depends_on"
+          ]
+        }
+      ],
+      "edges": 13,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 16,
+      "relation": "blocks",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [
+        {
+          "detection": "inverse-pair",
+          "folded": false,
+          "relations": [
+            "blocks",
+            "depends_on"
+          ]
+        },
+        {
+          "detection": "separator",
+          "folded": false,
+          "relations": [
+            "dependsOn",
+            "depends_on"
+          ]
+        }
+      ],
+      "edges": 13,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 17,
+      "relation": "depends_on",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 6,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 18,
+      "relation": "missingFromMain",
+      "status": "excluded"
+    }
+  ],
+  "tool": "taxontoy",
+  "version": "0.3.0"
+}

@@ -1,4 +1,4 @@
-"""Validate TaxOntOy's relation table and measure coverage of an OTL graph.
+"""Validate TaxOntOy's relation table, measure coverage, and rank unclassified names.
 
 Paths come from arguments or from TAXONTOY_TABLE and ONTO_CHECKOUT.
 """
@@ -15,7 +15,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 SCHEMA_ID = "taxontoy-relations/2"
 WAVES = ("audit", "concepts", "cases")
 TOP_KEYS = {"schema", *WAVES, "direction", "excluded", "properties"}
@@ -580,6 +580,101 @@ def cover_waves(table, graphs, knowledgegraph):
     return waves, sorted(set(errors))
 
 
+_ALIAS_DETECTIONS = ("case", "inverse-pair", "separator")
+
+
+def _usable_relation_name(edge):
+    """Name this edge would be classified under, or None when it has none."""
+    if not isinstance(edge, dict):
+        return None
+    if "kind" in edge:
+        name = edge["kind"]
+    elif "relation" in edge:
+        name = edge["relation"]
+    else:
+        return None
+    if not _name_ok(name):
+        return None
+    return name
+
+
+def _elsewhere(table, profile, relation):
+    for wave in WAVES:
+        if wave != profile and relation in table[wave]:
+            return wave
+    return None
+
+
+def rank_unclassified(table, edges, profile):
+    """Rank names that are not classified for one profile.
+
+    The count is how many edges become classified if that exact name is added
+    to the profile. Alias candidates are attached and are not folded in.
+    Edges with no usable relation name stay in the nameless bucket.
+    """
+    if profile not in WAVES:
+        raise ValueError(f"unknown profile {profile}")
+    classified_names = table[profile]
+    excluded = set(table["excluded"][profile])
+    grouped = defaultdict(list)
+    classified = 0
+    excluded_edges = 0
+    unclassified = 0
+    nameless = 0
+    for edge in edges:
+        name = _usable_relation_name(edge)
+        if name is None:
+            nameless += 1
+            continue
+        grouped[name].append(edge)
+        if name in classified_names:
+            classified += 1
+        elif name in excluded:
+            excluded_edges += 1
+        else:
+            unclassified += 1
+    alias_input = {}
+    for name, items in grouped.items():
+        usable = []
+        for edge in items:
+            source = edge.get("source")
+            target = edge.get("target")
+            if _name_ok(source) and _name_ok(target):
+                usable.append({"source": source, "target": target})
+        alias_input[name] = usable
+    aliases = [
+        item for item in _alias_candidates(alias_input)
+        if item["detection"] in _ALIAS_DETECTIONS
+    ]
+    ranking = []
+    for name, items in grouped.items():
+        if name in classified_names:
+            continue
+        related = [dict(item) for item in aliases if name in item["relations"]]
+        ranking.append({
+            "alias_candidates": related,
+            "edges": len(items),
+            "elsewhere": _elsewhere(table, profile, name),
+            "folded": False,
+            "relation": name,
+            "status": "excluded" if name in excluded else "unclassified",
+        })
+    ranking.sort(key=lambda row: (-row["edges"], row["relation"]))
+    for index, row in enumerate(ranking, start=1):
+        row["rank"] = index
+    return {
+        "counts": {
+            "classified": classified,
+            "edges": classified + excluded_edges + unclassified + nameless,
+            "excluded": excluded_edges,
+            "nameless": nameless,
+            "unclassified": unclassified,
+        },
+        "nameless": {"edges": nameless},
+        "ranking": ranking,
+    }
+
+
 def _inputs(paths):
     rows = [{"path": path, "sha256": _sha256(path)} for path in paths]
     rows.sort(key=lambda item: item["path"])
@@ -655,6 +750,21 @@ def _render_text(payload):
             lines.append(f"stale {name}")
         for item in body["alias_candidates"]:
             lines.append(f"candidate {item['detection']} {' '.join(item['relations'])}")
+    if "ranking" in payload:
+        counts = payload["counts"]
+        lines.append(f"profile {payload['profile']}")
+        lines.append(
+            "edges {edges} classified {classified} excluded {excluded} "
+            "unclassified {unclassified} nameless {nameless}".format(**counts)
+        )
+        for row in payload["ranking"]:
+            suffix = f" elsewhere {row['elsewhere']}" if row["elsewhere"] else ""
+            lines.append(
+                f"rank {row['rank']} {row['relation']} edges {row['edges']} status {row['status']}{suffix}"
+            )
+            for alias in row["alias_candidates"]:
+                lines.append(f"alias {alias['detection']} {' '.join(alias['relations'])}")
+        lines.append(f"nameless {payload['nameless']['edges']}")
     return "\n".join(lines) + "\n"
 
 
@@ -773,6 +883,15 @@ def main(argv=None):
     candidates.add_argument("--graph", action="append", default=[], metavar="WAVE=PATH")
     _add_format(candidates, "json")
 
+    rank = commands.add_parser(
+        "rank-unclassified",
+        help="rank relation names that are not classified for one profile",
+    )
+    rank.add_argument("graph", type=Path)
+    rank.add_argument("table", nargs="?", type=Path)
+    rank.add_argument("--profile", required=True, choices=WAVES)
+    _add_format(rank, "json")
+
     args = parser.parse_args(argv)
     try:
         fmt = _format(args)
@@ -789,6 +908,28 @@ def main(argv=None):
             payload["command"] = args.command
             _emit(_render(payload, fmt), output)
             return 1
+        if args.command == "rank-unclassified":
+            graph_path = _clean(args.graph)
+            if not graph_path:
+                raise ValueError("pass the graph path")
+            graph = _load_json(graph_path)
+            if not isinstance(graph, dict) or not isinstance(graph.get("edges"), list):
+                raise ValueError(f"{graph_path}: graph JSON must be an object with an edges array")
+            ranked = rank_unclassified(data, graph["edges"], args.profile)
+            payload = {
+                "command": "rank-unclassified",
+                "counts": ranked["counts"],
+                "errors": [],
+                "inputs": _inputs([graph_path, table_path]),
+                "nameless": ranked["nameless"],
+                "ok": True,
+                "profile": args.profile,
+                "ranking": ranked["ranking"],
+                "tool": "taxontoy",
+                "version": __version__,
+            }
+            _emit(_render(payload, fmt), output)
+            return 0
         graphs, types, graph_paths = _parse_graphs(args.graph)
         if args.command == "candidates":
             waves = {}
