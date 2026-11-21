@@ -49,7 +49,7 @@ python -S taxontoy.py candidates otl-relations.json \
 
 `coverage.json` と `candidates.json` は、ONTO の main への第一親マージ `8ca1ee5dc8c2714ddcdea6db6774f7168c0e617b` と、OnTautoLogy の main への第一親マージ `b062960e3ef63aa80d6d4c9b6e028219f1690bc4` から作った報告です。CI は同じ手順で作り直し、差分があれば失敗します。推移の成立と、宣言した非循環をグラフ上で証明することはここではありません。閉路の列挙は ONTO、サンプルのノード列は TopOntoLogy に残します。
 
-Python 3.11 以降です。依存パッケージはありません。テストは次です。
+Python 3.11 以降です。依存パッケージはありません。`since` は ASCII の `YYYY-MM-DD` だけです。テストは次です。テスト自身が行の実行を数えるため、プロセス内にトレーサを置きます。別のカバレッジ計測を同じプロセスに重ねると、プロセス内の行が数え漏れます。
 
 ```sh
 ONTO_CHECKOUT=../ONTO uv run --no-project python -S -m unittest discover -s tests -v

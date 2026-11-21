@@ -10,6 +10,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -65,12 +66,10 @@ def _clean(value):
 
 
 def _iso_date(value):
-    if not isinstance(value, str) or len(value) != 10 or value[4] != "-" or value[7] != "-":
-        return False
-    if not (value[:4].isdigit() and value[5:7].isdigit() and value[8:].isdigit()):
+    if not isinstance(value, str) or re.fullmatch(r"\d{4}-\d{2}-\d{2}", value, re.ASCII) is None:
         return False
     try:
-        datetime.date(int(value[:4]), int(value[5:7]), int(value[8:]))
+        datetime.date.fromisoformat(value)
     except ValueError:
         return False
     return True

@@ -23,6 +23,8 @@ def _hook(frame, event, arg):
     return _hook
 
 
+# The suite's own line partition traces this process and CLI children.
+# An external coverage.py run sees only the children, because this hook replaces the tracer.
 sys.settrace(_hook)
 
 import taxontoy
@@ -173,6 +175,15 @@ class CheckedInTableTests(unittest.TestCase):
         )
         self.assertEqual(payload["tool"], "taxontoy")
         self.assertEqual(payload["version"], taxontoy.__version__)
+        by_key = {(row["scope"], row["name"], row["property"]): row for row in payload["properties"]}
+        self.assertEqual(by_key[("relation", "dependsOn", "inverse_of")]["relation"], "blocks")
+        self.assertEqual(by_key[("relation", "narrower", "disjoint_with")]["relation"], "similarTo")
+        self.assertNotIn("relation", by_key[("class", "similarity", "symmetric")])
+        text = run(["validate", "otl-relations.json", "--format", "text"])
+        self.assertEqual(text.returncode, 0, text.stderr + text.stdout)
+        self.assertIn("property relation dependsOn inverse_of blocks since 2026-11-14", text.stdout)
+        self.assertIn("property relation narrower disjoint_with similarTo since 2026-11-15", text.stdout)
+        self.assertIn("property class similarity symmetric since 2026-11-15", text.stdout)
         self.assertEqual(payload["inputs"], [{
             "path": "otl-relations.json",
             "sha256": hashlib.sha256(TABLE.read_bytes()).hexdigest(),
@@ -827,8 +838,18 @@ class PropertyValidationTests(unittest.TestCase):
                 self.assertIn(message, result.stdout)
 
     def test_remaining_property_branches(self):
-        self.assertFalse(taxontoy._iso_date("nope"))
-        self.assertFalse(taxontoy._iso_date("abcd-ef-gh"))
+        for bad in (
+            "nope", "abcd-ef-gh", "2026/11/15", "+026-11-15", "2026-11-1",
+            "２０２６-１１-１５", "٢٠٢٦-١١-١٥", None, 20261115,
+        ):
+            self.assertFalse(taxontoy._iso_date(bad), bad)
+        self.assertTrue(taxontoy._iso_date("2026-11-15"))
+        fullwidth = minimal_table()
+        fullwidth["properties"]["classes"]["hierarchy"] = {"transitive": _evidence(since="２０２６-１１-１５")}
+        self.assertEqual(
+            taxontoy.validate_document(fullwidth),
+            ["properties.classes.hierarchy.transitive: invalid since"],
+        )
         self.assertIsNone(taxontoy._class_of(minimal_table(), "blocks"))
         bare = minimal_table()
         bare["properties"]["relations"]["dependsOn"] = {"transitive": _evidence()}
@@ -905,6 +926,71 @@ class PropertyValidationTests(unittest.TestCase):
         for data in samples:
             self.assertTrue(taxontoy.validate_document(data))
 
+        only_symmetric = minimal_table()
+        only_symmetric["properties"]["relations"]["duplicates"] = {"symmetric": _evidence()}
+        self.assertEqual(taxontoy.validate_document(only_symmetric), [])
+        only_acyclic = minimal_table()
+        only_acyclic["properties"]["relations"]["duplicates"] = {"acyclic": _evidence()}
+        self.assertEqual(taxontoy.validate_document(only_acyclic), [])
+        both_on_relation = minimal_table()
+        both_on_relation["properties"]["relations"]["duplicates"] = {
+            "acyclic": _evidence(), "symmetric": _evidence(),
+        }
+        self.assertEqual(
+            taxontoy.validate_document(both_on_relation),
+            ["relation duplicates: symmetric and acyclic contradict"],
+        )
+        split_flags = minimal_table()
+        split_flags["properties"]["classes"]["dependency"] = {"symmetric": _evidence()}
+        split_flags["properties"]["relations"]["dependsOn"] = {"acyclic": _evidence()}
+        self.assertEqual(
+            taxontoy.validate_document(split_flags),
+            ["dependsOn: symmetric and acyclic contradict"],
+        )
+
+        missing_classes = minimal_table()
+        del missing_classes["properties"]["classes"]
+        self.assertEqual(taxontoy.validate_document(missing_classes), ["properties: missing classes"])
+        missing_relations = minimal_table()
+        del missing_relations["properties"]["relations"]
+        self.assertEqual(taxontoy.validate_document(missing_relations), ["properties: missing relations"])
+        class_body = minimal_table()
+        class_body["properties"]["classes"]["hierarchy"] = ["symmetric"]
+        self.assertEqual(
+            taxontoy.validate_document(class_body),
+            ["properties.classes.hierarchy: must be an object"],
+        )
+        unknown_flag = minimal_table()
+        unknown_flag["properties"]["classes"]["hierarchy"] = {"reflexive": "nope"}
+        self.assertEqual(
+            taxontoy.validate_document(unknown_flag),
+            ["properties.classes.hierarchy: unknown property reflexive"],
+        )
+        missing_inverse_relation = minimal_table()
+        missing_inverse_relation["properties"]["relations"]["dependsOn"] = {"inverse_of": _evidence()}
+        missing_inverse_relation["properties"]["relations"]["blocks"] = {
+            "inverse_of": {"relation": "dependsOn", **_evidence()}
+        }
+        self.assertEqual(taxontoy.validate_document(missing_inverse_relation), [
+            "inverse pairs not mutually declared: blocks dependsOn",
+            "properties.relations.dependsOn.inverse_of: missing relation",
+        ])
+        not_array = minimal_table()
+        not_array["properties"]["relations"]["dependsOn"] = {"disjoint_with": "blocks"}
+        self.assertEqual(
+            taxontoy.validate_document(not_array),
+            ["properties.relations.dependsOn.disjoint_with: must be a non-empty array"],
+        )
+        unsorted = minimal_table()
+        unsorted["properties"]["relations"]["dependsOn"] = {"disjoint_with": [
+            {"relation": "similarTo", **_evidence()},
+            {"relation": "blocks", **_evidence()},
+        ]}
+        self.assertEqual(
+            taxontoy.validate_document(unsorted),
+            ["properties.relations.dependsOn.disjoint_with: must be sorted and unique"],
+        )
+
         graphs = fixture_graphs()
         graphs["audit"]["edges"].append("not-an-edge")
         with tempfile.TemporaryDirectory() as tmp:
@@ -938,12 +1024,18 @@ class CandidateTests(unittest.TestCase):
             {"id": "y", "type": "PullRequest"},
             {"id": "run", "type": "ActionsRun"},
             {"id": "repo", "type": "Repository"},
+            {"id": "loose"},
+            {"type": "Orphan"},
+            "nope",
+            {"id": "blank", "type": " "},
         ]
         graphs["audit"]["edges"].extend([
             {"source": "a", "relation": "depends-on", "target": "b"},
             {"source": "a", "relation": "DependsOn", "target": "b"},
             {"source": "run", "relation": "belongsTo", "target": "repo"},
             {"source": "a", "relation": "belongsTo", "target": "repo"},
+            {"source": "a", "relation": "belongsTo", "target": "loose"},
+            {"source": "missing", "relation": "belongsTo", "target": "repo"},
         ])
         graphs["audit"]["edges"] = [
             edge for edge in graphs["audit"]["edges"] if edge.get("relation") != "observes" or True
@@ -1007,7 +1099,14 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(polysemy["relations"], ["belongsTo"])
         self.assertFalse(polysemy["declared"])
         self.assertFalse(polysemy["folded"])
-        self.assertGreaterEqual(len(polysemy["patterns"]), 2)
+        self.assertEqual(polysemy["patterns"], [
+            {"edges": 1, "source": "ActionsRun", "target": "Repository"},
+            {"edges": 1, "source": "PullRequest", "target": "Repository"},
+        ])
+        self.assertEqual(
+            taxontoy._node_types([None, {"id": "a"}, {"type": "T"}, {"id": "ok", "type": "Kind"}, {"id": "bad", "type": " "}]),
+            {"ok": "Kind"},
+        )
         self.assertIn("polysemy: skipped; nodes have no type", payload["waves"]["cases"]["notes"])
         self.assertTrue(all(item["folded"] is False for wave in payload["waves"].values() for item in wave["candidates"]))
 
@@ -1046,6 +1145,9 @@ class CandidateTests(unittest.TestCase):
     def test_candidates_text_lists_declared_and_notes(self):
         result = self._invoke(self._table(), self._graphs(), "--format", "text")
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("wave audit", result.stdout)
+        self.assertIn("wave concepts", result.stdout)
+        self.assertIn("wave cases", result.stdout)
         self.assertIn("candidate separator declared no DependsOn depends-on dependsOn depends_on", result.stdout)
         self.assertIn("candidate inverse-pair declared yes blocks dependsOn", result.stdout)
         self.assertIn("candidate symmetric declared yes similarTo", result.stdout)
