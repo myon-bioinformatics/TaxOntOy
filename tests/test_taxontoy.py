@@ -23,6 +23,8 @@ def _hook(frame, event, arg):
     return _hook
 
 
+# Note: this in-process hook uses sys.settrace; external coverage.py runs
+# need sys.monitoring (e.g. core=sysmon on 3.12+) to avoid trace replacement.
 sys.settrace(_hook)
 
 import taxontoy
@@ -177,6 +179,34 @@ class CheckedInTableTests(unittest.TestCase):
             "path": "otl-relations.json",
             "sha256": hashlib.sha256(TABLE.read_bytes()).hexdigest(),
         }])
+        self.assertIn({
+            "name": "hierarchy",
+            "property": "transitive",
+            "reason": "上位から下位への narrower は推移する",
+            "scope": "class",
+            "since": "2026-11-15",
+        }, payload["properties"])
+        self.assertIn({
+            "name": "dependsOn",
+            "property": "inverse_of",
+            "reason": "監査グラフは dependsOn の逆向きを blocks として足す",
+            "relation": "blocks",
+            "scope": "relation",
+            "since": "2026-11-14",
+        }, payload["properties"])
+        self.assertIn({
+            "name": "narrower",
+            "property": "disjoint_with",
+            "reason": "階層の端点は類似の端点と重ならない",
+            "relation": "similarTo",
+            "scope": "relation",
+            "since": "2026-11-15",
+        }, payload["properties"])
+        text_out = run(["validate", "otl-relations.json", "--format", "text"])
+        self.assertEqual(text_out.returncode, 0)
+        self.assertIn("property class hierarchy transitive since 2026-11-15", text_out.stdout)
+        self.assertIn("property relation dependsOn inverse_of blocks since 2026-11-14", text_out.stdout)
+        self.assertIn("property relation narrower disjoint_with similarTo since 2026-11-15", text_out.stdout)
 
     def test_format_conflict_is_rejected(self):
         result = run(["validate", str(TABLE), "--json", "--format", "text"])
@@ -819,61 +849,116 @@ class PropertyValidationTests(unittest.TestCase):
 
         for data, message in samples:
             with self.subTest(message=message):
-                self.assertIn(message, taxontoy.validate_document(data))
+                self.assertEqual(taxontoy.validate_document(data), [message])
                 with tempfile.TemporaryDirectory() as tmp:
                     path = write_json(tmp, "table.json", data)
                     result = run(["validate", str(path), "--json"])
                 self.assertEqual(result.returncode, 1, result.stderr + result.stdout)
                 self.assertIn(message, result.stdout)
 
+    def test_since_accepts_only_ascii_iso_dates(self):
+        self.assertTrue(taxontoy._iso_date("2026-11-15"))
+        bad_dates = [
+            20261115,
+            None,
+            "nope",
+            "abcd-ef-gh",
+            "2026/11/15",
+            "2026-11/15",
+            "+026-11-15",
+            "20261115",
+            "2026-11-150",
+            "2026-11-15\n",
+            "2026-W01-1",
+            "２０２６-１１-１５",
+            "٢٠٢٦-١١-١٥",
+            "2026-02-31",
+        ]
+        for bad in bad_dates:
+            with self.subTest(bad=bad):
+                self.assertFalse(taxontoy._iso_date(bad))
+                table = minimal_table()
+                table["properties"]["relations"]["dependsOn"] = {"acyclic": _evidence(since=bad)}
+                self.assertEqual(
+                    taxontoy.validate_document(table),
+                    ["properties.relations.dependsOn.acyclic: invalid since"],
+                )
+
+    def test_relation_direct_symmetric_and_acyclic_declarations(self):
+        sym = minimal_table()
+        sym["properties"]["relations"]["similarTo"] = {"symmetric": _evidence()}
+        self.assertEqual(taxontoy.validate_document(sym), [])
+
+        acyc = minimal_table()
+        acyc["properties"]["relations"]["dependsOn"] = {"acyclic": _evidence()}
+        self.assertEqual(taxontoy.validate_document(acyc), [])
+
+        bad_acyc = minimal_table()
+        bad_acyc["properties"]["relations"]["dependsOn"] = {"acyclic": {"reason": "missing date"}}
+        self.assertEqual(
+            taxontoy.validate_document(bad_acyc),
+            ["properties.relations.dependsOn.acyclic: missing since"],
+        )
+
     def test_remaining_property_branches(self):
-        self.assertFalse(taxontoy._iso_date("nope"))
-        self.assertFalse(taxontoy._iso_date("abcd-ef-gh"))
         self.assertIsNone(taxontoy._class_of(minimal_table(), "blocks"))
         bare = minimal_table()
         bare["properties"]["relations"]["dependsOn"] = {"transitive": _evidence()}
         self.assertIsNone(taxontoy._inverse_partner(bare, "dependsOn"))
 
-        samples = []
+        exact_samples = []
         removed = minimal_table()
         del removed["properties"]
-        samples.append(removed)
+        exact_samples.append((removed, ["missing key: properties"]))
         not_object = minimal_table()
         not_object["properties"] = []
-        samples.append(not_object)
+        exact_samples.append((not_object, ["properties: must be an object"]))
         extra = minimal_table()
         extra["properties"]["extra"] = {}
-        samples.append(extra)
+        exact_samples.append((extra, ["properties: unknown key extra"]))
         missing_classes = minimal_table()
         del missing_classes["properties"]["classes"]
-        samples.append(missing_classes)
+        exact_samples.append((missing_classes, ["properties: missing classes"]))
+        missing_relations = minimal_table()
+        del missing_relations["properties"]["relations"]
+        exact_samples.append((missing_relations, ["properties: missing relations"]))
         bad_classes = minimal_table()
         bad_classes["properties"]["classes"] = []
-        samples.append(bad_classes)
+        exact_samples.append((bad_classes, ["properties.classes: must be an object"]))
         bad_relations = minimal_table()
         bad_relations["properties"]["relations"] = []
-        samples.append(bad_relations)
+        exact_samples.append((bad_relations, ["properties.relations: must be an object"]))
+        bad_excluded_type = minimal_table()
+        bad_excluded_type["excluded"]["audit"] = {"ghost": 1}
+        bad_excluded_type["properties"]["relations"]["ghost"] = {}
+        exact_samples.append((bad_excluded_type, [
+            "excluded.audit: must be an array",
+            "properties.relations.ghost: unknown relation ghost",
+        ]))
         unknown_class = minimal_table()
         unknown_class["properties"]["classes"]["nope"] = {}
-        samples.append(unknown_class)
+        exact_samples.append((unknown_class, ["properties.classes.nope: unknown class 'nope'"]))
         class_list = minimal_table()
-        class_list["properties"]["classes"]["hierarchy"] = []
-        samples.append(class_list)
+        class_list["properties"]["classes"]["hierarchy"] = ["symmetric"]
+        exact_samples.append((class_list, ["properties.classes.hierarchy: must be an object"]))
         class_flag = minimal_table()
-        class_flag["properties"]["classes"]["hierarchy"] = {"reflexive": _evidence()}
-        samples.append(class_flag)
+        class_flag["properties"]["classes"]["hierarchy"] = {"reflexive": {"since": "bad"}}
+        exact_samples.append((class_flag, ["properties.classes.hierarchy: unknown property reflexive"]))
         class_both = minimal_table()
         class_both["properties"]["classes"]["hierarchy"] = {"symmetric": _evidence(), "acyclic": _evidence()}
-        samples.append(class_both)
+        exact_samples.append((class_both, ["class hierarchy: symmetric and acyclic contradict"]))
         unknown_relation = minimal_table()
         unknown_relation["properties"]["relations"]["ghost"] = {}
-        samples.append(unknown_relation)
+        exact_samples.append((unknown_relation, ["properties.relations.ghost: unknown relation ghost"]))
         relation_list = minimal_table()
-        relation_list["properties"]["relations"]["dependsOn"] = []
-        samples.append(relation_list)
+        relation_list["properties"]["relations"]["dependsOn"] = ["transitive"]
+        exact_samples.append((relation_list, ["properties.relations.dependsOn: must be an object"]))
+        relation_flag = minimal_table()
+        relation_flag["properties"]["relations"]["dependsOn"] = {"reflexive": {"since": "bad"}}
+        exact_samples.append((relation_flag, ["properties.relations.dependsOn: unknown property reflexive"]))
         not_decl = minimal_table()
         not_decl["properties"]["relations"]["dependsOn"] = {"inverse_of": True}
-        samples.append(not_decl)
+        exact_samples.append((not_decl, ["properties.relations.dependsOn.inverse_of: must be an object"]))
         extra_field = minimal_table()
         extra_field["properties"]["relations"]["dependsOn"] = {
             "inverse_of": {"relation": "blocks", "note": "x", **_evidence()}
@@ -881,29 +966,33 @@ class PropertyValidationTests(unittest.TestCase):
         extra_field["properties"]["relations"]["blocks"] = {
             "inverse_of": {"relation": "dependsOn", **_evidence()}
         }
-        samples.append(extra_field)
+        exact_samples.append((extra_field, ["properties.relations.dependsOn.inverse_of: unknown field note"]))
         missing_relation = minimal_table()
         missing_relation["properties"]["relations"]["dependsOn"] = {"inverse_of": _evidence()}
-        samples.append(missing_relation)
+        exact_samples.append((missing_relation, ["properties.relations.dependsOn.inverse_of: missing relation"]))
         padded = minimal_table()
         padded["properties"]["classes"]["hierarchy"] = {"transitive": {"since": "2026-11-15", "reason": " padded "}}
-        samples.append(padded)
+        exact_samples.append((padded, ["properties.classes.hierarchy.transitive: missing reason"]))
         empty_disjoint = minimal_table()
         empty_disjoint["properties"]["relations"]["dependsOn"] = {"disjoint_with": []}
-        samples.append(empty_disjoint)
+        exact_samples.append((empty_disjoint, ["properties.relations.dependsOn.disjoint_with: must be a non-empty array"]))
+        disjoint_missing_rel = minimal_table()
+        disjoint_missing_rel["properties"]["relations"]["dependsOn"] = {"disjoint_with": [_evidence(), {"relation": "blocks", **_evidence()}]}
+        exact_samples.append((disjoint_missing_rel, ["properties.relations.dependsOn.disjoint_with[0]: missing relation"]))
         unknown_disjoint = minimal_table()
         unknown_disjoint["properties"]["relations"]["dependsOn"] = {
             "disjoint_with": [{"relation": "ghost", **_evidence()}]
         }
-        samples.append(unknown_disjoint)
+        exact_samples.append((unknown_disjoint, ["properties.relations.dependsOn.disjoint_with: unknown relation ghost"]))
         unsorted = minimal_table()
         unsorted["properties"]["relations"]["dependsOn"] = {"disjoint_with": [
             {"relation": "similarTo", **_evidence()},
             {"relation": "blocks", **_evidence()},
         ]}
-        samples.append(unsorted)
-        for data in samples:
-            self.assertTrue(taxontoy.validate_document(data))
+        exact_samples.append((unsorted, ["properties.relations.dependsOn.disjoint_with: must be sorted and unique"]))
+        for data, expected_errors in exact_samples:
+            with self.subTest(expected=expected_errors):
+                self.assertEqual(taxontoy.validate_document(data), expected_errors)
 
         graphs = fixture_graphs()
         graphs["audit"]["edges"].append("not-an-edge")
@@ -938,12 +1027,14 @@ class CandidateTests(unittest.TestCase):
             {"id": "y", "type": "PullRequest"},
             {"id": "run", "type": "ActionsRun"},
             {"id": "repo", "type": "Repository"},
+            {"id": "untyped"},
         ]
         graphs["audit"]["edges"].extend([
             {"source": "a", "relation": "depends-on", "target": "b"},
             {"source": "a", "relation": "DependsOn", "target": "b"},
             {"source": "run", "relation": "belongsTo", "target": "repo"},
             {"source": "a", "relation": "belongsTo", "target": "repo"},
+            {"source": "a", "relation": "belongsTo", "target": "untyped"},
         ])
         graphs["audit"]["edges"] = [
             edge for edge in graphs["audit"]["edges"] if edge.get("relation") != "observes" or True
@@ -1003,11 +1094,18 @@ class CandidateTests(unittest.TestCase):
             "folded": False,
             "relations": ["similarTo"],
         }, concepts)
+        self.assertEqual(
+            audit,
+            sorted(audit, key=lambda item: (item["detection"], item["relations"])),
+        )
         polysemy = next(item for item in audit if item["detection"] == "polysemy")
         self.assertEqual(polysemy["relations"], ["belongsTo"])
         self.assertFalse(polysemy["declared"])
         self.assertFalse(polysemy["folded"])
-        self.assertGreaterEqual(len(polysemy["patterns"]), 2)
+        self.assertEqual(polysemy["patterns"], [
+            {"edges": 1, "source": "ActionsRun", "target": "Repository"},
+            {"edges": 1, "source": "PullRequest", "target": "Repository"},
+        ])
         self.assertIn("polysemy: skipped; nodes have no type", payload["waves"]["cases"]["notes"])
         self.assertTrue(all(item["folded"] is False for wave in payload["waves"].values() for item in wave["candidates"]))
 
@@ -1046,6 +1144,13 @@ class CandidateTests(unittest.TestCase):
     def test_candidates_text_lists_declared_and_notes(self):
         result = self._invoke(self._table(), self._graphs(), "--format", "text")
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("wave audit", result.stdout)
+        self.assertIn("wave concepts", result.stdout)
+        self.assertIn("wave cases", result.stdout)
+        self.assertIn(
+            "candidate polysemy declared no belongsTo ActionsRun->Repository:1 PullRequest->Repository:1",
+            result.stdout,
+        )
         self.assertIn("candidate separator declared no DependsOn depends-on dependsOn depends_on", result.stdout)
         self.assertIn("candidate inverse-pair declared yes blocks dependsOn", result.stdout)
         self.assertIn("candidate symmetric declared yes similarTo", result.stdout)
