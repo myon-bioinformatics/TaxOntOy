@@ -1969,9 +1969,14 @@ def classify_structure(graph, root):
         raise ValueError("expected structure-graph/1")
     nodes, edges = graph.get("nodes"), graph.get("edges")
     for rows, keys in ((nodes, ("id", "type")), (edges, ("source", "relation", "target"))):
-        if not isinstance(rows, list) or any(not isinstance(row, dict) or
-                any(not isinstance(row.get(k), str) or not row[k] for k in keys) for row in rows):
-            raise ValueError("invalid structure graph nodes or edges")
+        if not isinstance(rows, list):
+            raise ValueError("expected a list of structure graph nodes or edges")
+        for row in rows:
+            if not isinstance(row, dict):
+                raise ValueError("expected an object for each structure node or edge")
+            for key in keys:
+                if not _name_ok(row.get(key)):
+                    raise ValueError(f"missing or invalid structure graph field: {key}")
     vocabulary = {"hasResidue": (["Model"], "Residue"), "hasAtom": (["Residue"], "Atom"),
                   "nearAtom": (["Atom"], "Atom")}
     checker = _load_onto_module(root, "ontology", ("violations",))
