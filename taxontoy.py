@@ -787,6 +787,7 @@ def _manifest_rows(path):
         rows.append({
             "commit": item["commit"],
             "full": full,
+            "input_path": str(Path(path).parent / relative),
             "path": item["path"],
             "repo": item["repo"],
             "role": item["role"],
@@ -1097,7 +1098,7 @@ def _graph_from_manifest(path):
             "role": row["role"],
             "text": row["full"].read_text(encoding="utf-8"),
         })
-    return build_repo_graph(loaded), [path, *(str(row["full"]) for row in rows)]
+    return build_repo_graph(loaded), [path, *(row["input_path"] for row in rows)]
 
 
 def _holder_path(edge):
