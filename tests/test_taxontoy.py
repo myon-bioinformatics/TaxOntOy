@@ -533,6 +533,37 @@ class CoveragePathTests(unittest.TestCase):
         self.assertEqual(no_onto.returncode, 1)
         self.assertIn("pass --onto or set ONTO_CHECKOUT", no_onto.stderr)
 
+    def test_whitespace_only_environment_paths_are_errors(self):
+        env = os.environ.copy()
+        env["TAXONTOY_TABLE"] = "  \t  "
+        env["ONTO_CHECKOUT"] = self.onto
+        no_table = run(["validate", "--json"], env=env)
+        self.assertEqual(no_table.returncode, 1)
+        self.assertIn("pass the table path or set TAXONTOY_TABLE", no_table.stderr)
+
+        env = os.environ.copy()
+        env.pop("TAXONTOY_TABLE", None)
+        env["ONTO_CHECKOUT"] = "  \t  "
+        with tempfile.TemporaryDirectory() as tmp:
+            table = write_json(tmp, "table.json", minimal_table())
+            graph_args = self._write_graphs(tmp, fixture_graphs())
+            no_onto = run(["coverage", str(table), "--format", "json", *graph_args], env=env)
+        self.assertEqual(no_onto.returncode, 1)
+        self.assertIn("pass --onto or set ONTO_CHECKOUT", no_onto.stderr)
+
+    def test_padded_environment_paths_are_stripped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            table = write_json(tmp, "table.json", minimal_table())
+            graph_args = self._write_graphs(tmp, fixture_graphs())
+            env = os.environ.copy()
+            env["TAXONTOY_TABLE"] = f"  {table}  "
+            env["ONTO_CHECKOUT"] = f"  {self.onto}  "
+            result = run(["coverage", "--format", "json", *graph_args], env=env)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["onto"]["path"].endswith("knowledgegraph.py"))
+
     def test_coverage_rejects_a_broken_table(self):
         data = minimal_table()
         del data["excluded"]
