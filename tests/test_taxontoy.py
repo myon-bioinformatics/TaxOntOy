@@ -12,13 +12,50 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TABLE = ROOT / "otl-relations.json"
 ONTO = os.environ.get("ONTO_CHECKOUT")
+_SEEN = set()
+_COVER_DIR = Path(tempfile.mkdtemp(prefix="taxontoy-lines-"))
+_TARGET_SUFFIX = f"{os.sep}taxontoy.py"
+
+
+def _hook(frame, event, arg):
+    if event == "line" and frame.f_code.co_filename.endswith(_TARGET_SUFFIX):
+        _SEEN.add(frame.f_lineno)
+    return _hook
+
+
+sys.settrace(_hook)
 
 import taxontoy
 
 
+_WRAPPER = """
+import os, runpy, sys, trace
+from pathlib import Path
+script, dest = sys.argv[1], sys.argv[2]
+sys.argv = [script, *sys.argv[3:]]
+tracer = trace.Trace(count=1, trace=0)
+status = 0
+try:
+    tracer.runctx(
+        "runpy.run_path(script, run_name='__main__')",
+        {"runpy": runpy, "script": script},
+        {},
+    )
+except SystemExit as exc:
+    status = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+lines = []
+for (filename, lineno), count in tracer.results().counts.items():
+    if count and os.path.abspath(filename) == os.path.abspath(script):
+        lines.append(str(lineno))
+Path(dest).write_text("\\n".join(sorted(lines, key=int)) + ("\\n" if lines else ""), encoding="utf-8")
+raise SystemExit(status)
+"""
+
+
 def run(args, *, cwd=None, env=None):
+    dest = _COVER_DIR / f"{len(list(_COVER_DIR.iterdir()))}.txt"
     return subprocess.run(
-        [sys.executable, "-S", str(ROOT / "taxontoy.py"), *args],
+        [sys.executable, "-S", "-c", _WRAPPER, str(ROOT / "taxontoy.py"), str(dest), *args],
         cwd=ROOT if cwd is None else cwd,
         capture_output=True,
         text=True,
@@ -59,6 +96,7 @@ def minimal_table():
             "concepts": ["hasName"],
             "cases": [],
         },
+        "properties": {"classes": {}, "relations": {}},
     }
 
 
@@ -300,6 +338,42 @@ class CommittedReportTests(unittest.TestCase):
             digest = hashlib.sha256((Path(ONTO).resolve() / "knowledgegraph.py").read_bytes()).hexdigest()
             self.assertEqual(payload["onto"]["sha256"], digest)
 
+    def test_committed_candidates_match_declared_properties(self):
+        path = ROOT / "candidates.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["errors"], [])
+        self.assertEqual(payload["version"], taxontoy.__version__)
+        self.assertEqual(
+            path.read_text(encoding="utf-8"),
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+        audit = payload["waves"]["audit"]["candidates"]
+        self.assertIn({
+            "declared": False,
+            "detection": "separator",
+            "folded": False,
+            "relations": ["dependsOn", "depends_on"],
+        }, audit)
+        self.assertIn({
+            "declared": True,
+            "detection": "inverse-pair",
+            "folded": False,
+            "relations": ["blocks", "dependsOn"],
+        }, audit)
+        polysemy = next(item for item in audit if item["detection"] == "polysemy")
+        self.assertEqual(polysemy["relations"], ["belongsTo"])
+        self.assertEqual(len(polysemy["patterns"]), 5)
+        concepts = payload["waves"]["concepts"]["candidates"]
+        self.assertIn({
+            "declared": True,
+            "detection": "symmetric",
+            "folded": False,
+            "relations": ["similarTo"],
+        }, concepts)
+        self.assertEqual(payload["waves"]["cases"]["notes"], ["polysemy: skipped; nodes have no type"])
+        self.assertTrue(all(not item["folded"] for wave in payload["waves"].values() for item in wave["candidates"]))
+
 
 
 class ValidateErrorTests(unittest.TestCase):
@@ -317,7 +391,7 @@ class ValidateErrorTests(unittest.TestCase):
 
         schema = minimal_table()
         schema["schema"] = "taxontoy-relations/0"
-        cases.append((schema, ["schema: expected taxontoy-relations/1"]))
+        cases.append((schema, [f"schema: expected {taxontoy.SCHEMA_ID}"]))
 
         not_object = minimal_table()
         not_object["audit"] = []
@@ -687,6 +761,354 @@ class CoveragePathTests(unittest.TestCase):
         waves, errors = taxontoy.cover_waves(table, graphs, knowledgegraph)
         self.assertFalse(waves["audit"]["partition"]["holds"])
         self.assertTrue(any("graph and table name sets do not close" in item for item in errors))
+
+
+def _evidence(since="2026-11-14", reason="recorded"):
+    return {"since": since, "reason": reason}
+
+
+class PropertyValidationTests(unittest.TestCase):
+    def test_each_property_error_is_reported(self):
+        samples = []
+
+        unknown = minimal_table()
+        unknown["properties"]["relations"]["dependsOn"] = {"reflexive": _evidence()}
+        samples.append((unknown, "properties.relations.dependsOn: unknown property reflexive"))
+
+        missing_partner = minimal_table()
+        missing_partner["properties"]["relations"]["dependsOn"] = {
+            "inverse_of": {"relation": "ghost", **_evidence()}
+        }
+        samples.append((missing_partner, "properties.relations.dependsOn.inverse_of: unknown relation ghost"))
+
+        one_way = minimal_table()
+        one_way["properties"]["relations"]["dependsOn"] = {
+            "inverse_of": {"relation": "blocks", **_evidence()}
+        }
+        samples.append((one_way, "inverse pairs not mutually declared: blocks dependsOn"))
+
+        both_flags = minimal_table()
+        both_flags["properties"]["relations"]["dependsOn"] = {
+            "symmetric": _evidence(),
+            "acyclic": _evidence(),
+        }
+        samples.append((both_flags, "relation dependsOn: symmetric and acyclic contradict"))
+
+        split = minimal_table()
+        split["properties"]["classes"]["dependency"] = {"symmetric": _evidence()}
+        split["properties"]["relations"]["dependsOn"] = {"acyclic": _evidence()}
+        samples.append((split, "dependsOn: symmetric and acyclic contradict"))
+
+        itself = minimal_table()
+        itself["properties"]["relations"]["dependsOn"] = {
+            "disjoint_with": [{"relation": "dependsOn", **_evidence()}]
+        }
+        samples.append((itself, "properties.relations.dependsOn.disjoint_with: disjoint with itself"))
+
+        no_since = minimal_table()
+        no_since["properties"]["classes"]["hierarchy"] = {"transitive": {"reason": "because"}}
+        samples.append((no_since, "properties.classes.hierarchy.transitive: missing since"))
+
+        no_reason = minimal_table()
+        no_reason["properties"]["classes"]["hierarchy"] = {"transitive": {"since": "2026-11-15"}}
+        samples.append((no_reason, "properties.classes.hierarchy.transitive: missing reason"))
+
+        bad_date = minimal_table()
+        bad_date["properties"]["classes"]["hierarchy"] = {"transitive": _evidence(since="2026-02-31")}
+        samples.append((bad_date, "properties.classes.hierarchy.transitive: invalid since"))
+
+        for data, message in samples:
+            with self.subTest(message=message):
+                self.assertIn(message, taxontoy.validate_document(data))
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = write_json(tmp, "table.json", data)
+                    result = run(["validate", str(path), "--json"])
+                self.assertEqual(result.returncode, 1, result.stderr + result.stdout)
+                self.assertIn(message, result.stdout)
+
+    def test_remaining_property_branches(self):
+        self.assertFalse(taxontoy._iso_date("nope"))
+        self.assertFalse(taxontoy._iso_date("abcd-ef-gh"))
+        self.assertIsNone(taxontoy._class_of(minimal_table(), "blocks"))
+        bare = minimal_table()
+        bare["properties"]["relations"]["dependsOn"] = {"transitive": _evidence()}
+        self.assertIsNone(taxontoy._inverse_partner(bare, "dependsOn"))
+
+        samples = []
+        removed = minimal_table()
+        del removed["properties"]
+        samples.append(removed)
+        not_object = minimal_table()
+        not_object["properties"] = []
+        samples.append(not_object)
+        extra = minimal_table()
+        extra["properties"]["extra"] = {}
+        samples.append(extra)
+        missing_classes = minimal_table()
+        del missing_classes["properties"]["classes"]
+        samples.append(missing_classes)
+        bad_classes = minimal_table()
+        bad_classes["properties"]["classes"] = []
+        samples.append(bad_classes)
+        bad_relations = minimal_table()
+        bad_relations["properties"]["relations"] = []
+        samples.append(bad_relations)
+        unknown_class = minimal_table()
+        unknown_class["properties"]["classes"]["nope"] = {}
+        samples.append(unknown_class)
+        class_list = minimal_table()
+        class_list["properties"]["classes"]["hierarchy"] = []
+        samples.append(class_list)
+        class_flag = minimal_table()
+        class_flag["properties"]["classes"]["hierarchy"] = {"reflexive": _evidence()}
+        samples.append(class_flag)
+        class_both = minimal_table()
+        class_both["properties"]["classes"]["hierarchy"] = {"symmetric": _evidence(), "acyclic": _evidence()}
+        samples.append(class_both)
+        unknown_relation = minimal_table()
+        unknown_relation["properties"]["relations"]["ghost"] = {}
+        samples.append(unknown_relation)
+        relation_list = minimal_table()
+        relation_list["properties"]["relations"]["dependsOn"] = []
+        samples.append(relation_list)
+        not_decl = minimal_table()
+        not_decl["properties"]["relations"]["dependsOn"] = {"inverse_of": True}
+        samples.append(not_decl)
+        extra_field = minimal_table()
+        extra_field["properties"]["relations"]["dependsOn"] = {
+            "inverse_of": {"relation": "blocks", "note": "x", **_evidence()}
+        }
+        extra_field["properties"]["relations"]["blocks"] = {
+            "inverse_of": {"relation": "dependsOn", **_evidence()}
+        }
+        samples.append(extra_field)
+        missing_relation = minimal_table()
+        missing_relation["properties"]["relations"]["dependsOn"] = {"inverse_of": _evidence()}
+        samples.append(missing_relation)
+        padded = minimal_table()
+        padded["properties"]["classes"]["hierarchy"] = {"transitive": {"since": "2026-11-15", "reason": " padded "}}
+        samples.append(padded)
+        empty_disjoint = minimal_table()
+        empty_disjoint["properties"]["relations"]["dependsOn"] = {"disjoint_with": []}
+        samples.append(empty_disjoint)
+        unknown_disjoint = minimal_table()
+        unknown_disjoint["properties"]["relations"]["dependsOn"] = {
+            "disjoint_with": [{"relation": "ghost", **_evidence()}]
+        }
+        samples.append(unknown_disjoint)
+        unsorted = minimal_table()
+        unsorted["properties"]["relations"]["dependsOn"] = {"disjoint_with": [
+            {"relation": "similarTo", **_evidence()},
+            {"relation": "blocks", **_evidence()},
+        ]}
+        samples.append(unsorted)
+        for data in samples:
+            self.assertTrue(taxontoy.validate_document(data))
+
+        graphs = fixture_graphs()
+        graphs["audit"]["edges"].append("not-an-edge")
+        with tempfile.TemporaryDirectory() as tmp:
+            table = write_json(tmp, "table.json", minimal_table())
+            args = ["candidates", str(table), "--json"]
+            for wave, payload in graphs.items():
+                path = write_json(tmp, f"{wave}.json", payload)
+                args.extend(["--graph", f"{wave}={path}"])
+            result = run(args)
+        self.assertEqual(result.returncode, 1, result.stderr + result.stdout)
+        self.assertIn("malformed audit: 1", result.stdout)
+
+    def test_checked_in_properties_are_consistent(self):
+        data = json.loads(TABLE.read_text(encoding="utf-8"))
+        self.assertEqual(taxontoy.validate_document(data), [])
+        self.assertEqual(
+            data["properties"]["relations"]["dependsOn"]["inverse_of"]["relation"],
+            "blocks",
+        )
+        self.assertIn("symmetric", data["properties"]["classes"]["similarity"])
+
+
+class CandidateTests(unittest.TestCase):
+    def _graphs(self):
+        graphs = fixture_graphs()
+        graphs["audit"]["nodes"] = [
+            {"id": "a", "type": "PullRequest"},
+            {"id": "b", "type": "PullRequest"},
+            {"id": "c", "type": "PullRequest"},
+            {"id": "x", "type": "Observation"},
+            {"id": "y", "type": "PullRequest"},
+            {"id": "run", "type": "ActionsRun"},
+            {"id": "repo", "type": "Repository"},
+        ]
+        graphs["audit"]["edges"].extend([
+            {"source": "a", "relation": "depends-on", "target": "b"},
+            {"source": "a", "relation": "DependsOn", "target": "b"},
+            {"source": "run", "relation": "belongsTo", "target": "repo"},
+            {"source": "a", "relation": "belongsTo", "target": "repo"},
+        ])
+        graphs["audit"]["edges"] = [
+            edge for edge in graphs["audit"]["edges"] if edge.get("relation") != "observes" or True
+        ]
+        # belongsTo must be excluded or coverage would fail; candidates do not require a closed partition.
+        return graphs
+
+    def _table(self):
+        table = minimal_table()
+        table["properties"] = {
+            "classes": {"similarity": {"symmetric": _evidence(since="2026-11-15", reason="mirrored")}},
+            "relations": {
+                "dependsOn": {"inverse_of": {"relation": "blocks", **_evidence(reason="reverse of dependsOn")}},
+                "blocks": {"inverse_of": {"relation": "dependsOn", **_evidence(reason="reverse of blocks")}},
+            },
+        }
+        table["excluded"]["audit"] = sorted([*table["excluded"]["audit"], "DependsOn", "belongsTo", "depends-on"])
+        return table
+
+    def _invoke(self, table, graphs, *extra):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_json(tmp, "table.json", table)
+            args = ["candidates", str(path), "--format", "json", *extra]
+            for wave, payload in graphs.items():
+                graph = write_json(tmp, f"{wave}.json", payload)
+                args.extend(["--graph", f"{wave}={graph}"])
+            result = run(args)
+        return result
+
+    def test_each_candidate_type_is_reported_and_not_folded(self):
+        result = self._invoke(self._table(), self._graphs())
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        payload = json.loads(result.stdout)
+        audit = payload["waves"]["audit"]["candidates"]
+        self.assertIn({
+            "declared": False,
+            "detection": "separator",
+            "folded": False,
+            "relations": ["DependsOn", "depends-on", "dependsOn", "depends_on"],
+        }, audit)
+        self.assertIn({
+            "declared": False,
+            "detection": "case",
+            "folded": False,
+            "relations": ["DependsOn", "dependsOn"],
+        }, audit)
+        self.assertIn({
+            "declared": True,
+            "detection": "inverse-pair",
+            "folded": False,
+            "relations": ["blocks", "dependsOn"],
+        }, audit)
+        concepts = payload["waves"]["concepts"]["candidates"]
+        self.assertIn({
+            "declared": True,
+            "detection": "symmetric",
+            "folded": False,
+            "relations": ["similarTo"],
+        }, concepts)
+        polysemy = next(item for item in audit if item["detection"] == "polysemy")
+        self.assertEqual(polysemy["relations"], ["belongsTo"])
+        self.assertFalse(polysemy["declared"])
+        self.assertFalse(polysemy["folded"])
+        self.assertGreaterEqual(len(polysemy["patterns"]), 2)
+        self.assertIn("polysemy: skipped; nodes have no type", payload["waves"]["cases"]["notes"])
+        self.assertTrue(all(item["folded"] is False for wave in payload["waves"].values() for item in wave["candidates"]))
+
+    def test_flipping_a_declaration_changes_the_result(self):
+        table = self._table()
+        before = json.loads(self._invoke(table, self._graphs()).stdout)
+        table["properties"]["classes"]["similarity"] = {}
+        table["properties"]["relations"].pop("dependsOn")
+        table["properties"]["relations"].pop("blocks")
+        after = json.loads(self._invoke(table, self._graphs()).stdout)
+        self.assertNotEqual(before, after)
+
+        def declared(payload, wave, detection, relations):
+            for item in payload["waves"][wave]["candidates"]:
+                if item["detection"] == detection and item["relations"] == relations:
+                    return item["declared"]
+            self.fail(f"missing {detection} {relations}")
+
+        self.assertTrue(declared(before, "concepts", "symmetric", ["similarTo"]))
+        self.assertFalse(declared(after, "concepts", "symmetric", ["similarTo"]))
+        self.assertTrue(declared(before, "audit", "inverse-pair", ["blocks", "dependsOn"]))
+        self.assertFalse(declared(after, "audit", "inverse-pair", ["blocks", "dependsOn"]))
+
+    def test_dropping_a_mirrored_edge_removes_the_symmetric_candidate(self):
+        graphs = self._graphs()
+        before = json.loads(self._invoke(self._table(), graphs).stdout)
+        graphs["concepts"]["edges"] = [
+            edge for edge in graphs["concepts"]["edges"]
+            if not (edge.get("kind") == "similarTo" and edge["source"] == "n")
+        ]
+        after = json.loads(self._invoke(self._table(), graphs).stdout)
+        self.assertNotEqual(before, after)
+        names = [item["relations"] for item in after["waves"]["concepts"]["candidates"] if item["detection"] == "symmetric"]
+        self.assertNotIn(["similarTo"], names)
+
+    def test_candidates_text_lists_declared_and_notes(self):
+        result = self._invoke(self._table(), self._graphs(), "--format", "text")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("candidate separator declared no DependsOn depends-on dependsOn depends_on", result.stdout)
+        self.assertIn("candidate inverse-pair declared yes blocks dependsOn", result.stdout)
+        self.assertIn("candidate symmetric declared yes similarTo", result.stdout)
+        self.assertIn("note polysemy: skipped; nodes have no type", result.stdout)
+
+    def test_padded_table_argument_is_stripped(self):
+        result = run(["validate", "  otl-relations.json  ", "--json"])
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["inputs"][0]["path"], "otl-relations.json")
+
+    def test_blank_onto_argument_uses_the_environment(self):
+        if not ONTO:
+            self.fail("set ONTO_CHECKOUT to the pinned ONTO checkout")
+        with tempfile.TemporaryDirectory() as tmp:
+            table = write_json(tmp, "table.json", minimal_table())
+            args = ["coverage", str(table), "--onto", "   ", "--json"]
+            for wave, payload in fixture_graphs().items():
+                path = write_json(tmp, f"{wave}.json", payload)
+                args.extend(["--graph", f"{wave}=  {path}  "])
+            env = os.environ.copy()
+            env["ONTO_CHECKOUT"] = str(Path(ONTO).resolve())
+            result = run(args, env=env)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+
+class ZLineCoverageTests(unittest.TestCase):
+    def test_executed_excluded_and_unexecuted_partition_the_file(self):
+        child = set()
+        for path in _COVER_DIR.iterdir():
+            text = path.read_text(encoding="utf-8")
+            child.update(int(line) for line in text.split() if line)
+        self.assertTrue(child, "CLI subprocesses did not record executed lines")
+        source_path = ROOT / "taxontoy.py"
+        source = source_path.read_text(encoding="utf-8")
+        total = len(source.splitlines())
+        code = compile(source, str(source_path), "exec")
+        executable = set()
+
+        def walk(block):
+            for _start, _end, lineno in block.co_lines():
+                if lineno:
+                    executable.add(lineno)
+            for const in block.co_consts:
+                if hasattr(const, "co_lines"):
+                    walk(const)
+
+        walk(code)
+        seen = set(_SEEN) | child
+        executed = executable & seen
+        excluded = set(range(1, total + 1)) - executable
+        unexecuted = executable - seen
+        self.assertEqual(len(executed) + len(excluded) + len(unexecuted), total)
+        sys.stderr.write(
+            f"line coverage executed={len(executed)} excluded={len(excluded)} "
+            f"unexecuted={len(unexecuted)} total={total}\n"
+        )
+        if unexecuted:
+            lines = source.splitlines()
+            preview = "\n".join(f"{number}: {lines[number - 1]}" for number in sorted(unexecuted))
+            self.fail(f"unexecuted {len(unexecuted)}\n{preview}")
+        guard = next(number for number, line in enumerate(source.splitlines(), start=1) if line.startswith("if __name__"))
+        self.assertIn(guard, child)
 
 
 if __name__ == "__main__":

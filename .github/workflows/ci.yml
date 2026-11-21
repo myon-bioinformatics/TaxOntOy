@@ -75,3 +75,10 @@ jobs:
             --format json \
             --output build/coverage.json
           diff -u coverage.json build/coverage.json
+          uv run --no-project python -S taxontoy.py candidates otl-relations.json \
+            --graph audit=build/audit.json \
+            --graph concepts=build/concepts.json \
+            --graph cases=build/cases.json \
+            --format json \
+            --output build/candidates.json
+          diff -u candidates.json build/candidates.json

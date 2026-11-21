@@ -5,6 +5,7 @@ Paths come from arguments or from TAXONTOY_TABLE and ONTO_CHECKOUT.
 from __future__ import annotations
 
 import argparse
+import datetime
 import hashlib
 import importlib.util
 import json
@@ -13,10 +14,12 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-__version__ = "0.1.0"
-SCHEMA_ID = "taxontoy-relations/1"
+__version__ = "0.2.0"
+SCHEMA_ID = "taxontoy-relations/2"
 WAVES = ("audit", "concepts", "cases")
-TOP_KEYS = {"schema", *WAVES, "direction", "excluded"}
+TOP_KEYS = {"schema", *WAVES, "direction", "excluded", "properties"}
+CLASS_FLAGS = ("acyclic", "symmetric", "transitive")
+RELATION_FLAGS = (*CLASS_FLAGS, "disjoint_with", "inverse_of")
 CLASS_DIRECTION = {
     "affirmation": "forward",
     "dependency": "forward",
@@ -53,6 +56,184 @@ def _load_json(path):
 
 def _name_ok(value):
     return isinstance(value, str) and value != "" and value == value.strip()
+
+
+def _clean(value):
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _iso_date(value):
+    if not isinstance(value, str) or len(value) != 10 or value[4] != "-" or value[7] != "-":
+        return False
+    if not (value[:4].isdigit() and value[5:7].isdigit() and value[8:].isdigit()):
+        return False
+    try:
+        datetime.date(int(value[:4]), int(value[5:7]), int(value[8:]))
+    except ValueError:
+        return False
+    return True
+
+
+def _evidence(obj, where, errors, *, partner):
+    """Check since/reason, and a partner relation when partner is true."""
+    if not isinstance(obj, dict):
+        errors.append(f"{where}: must be an object")
+        return None
+    allowed = {"since", "reason", "relation"} if partner else {"since", "reason"}
+    for key in sorted(set(obj) - allowed):
+        errors.append(f"{where}: unknown field {key}")
+    if "since" not in obj or obj.get("since") == "" or (isinstance(obj.get("since"), str) and obj.get("since").strip() == ""):
+        errors.append(f"{where}: missing since")
+    elif not _iso_date(obj.get("since")):
+        errors.append(f"{where}: invalid since")
+    reason = obj.get("reason")
+    if not isinstance(reason, str) or reason.strip() == "":
+        errors.append(f"{where}: missing reason")
+    elif reason != reason.strip():
+        errors.append(f"{where}: missing reason")
+    if not partner:
+        return None
+    relation = obj.get("relation")
+    if not _name_ok(relation):
+        errors.append(f"{where}: missing relation")
+        return None
+    return relation
+
+
+def _validate_properties(data, classified, errors):
+    if "properties" not in data:
+        return
+    props = data["properties"]
+    if not isinstance(props, dict):
+        errors.append("properties: must be an object")
+        return
+    for key in sorted(set(props) - {"classes", "relations"}):
+        errors.append(f"properties: unknown key {key}")
+    for key in ("classes", "relations"):
+        if key not in props:
+            errors.append(f"properties: missing {key}")
+    classes = props.get("classes")
+    relations = props.get("relations")
+    if not isinstance(classes, dict):
+        classes = {}
+        if "classes" in props:
+            errors.append("properties.classes: must be an object")
+    if not isinstance(relations, dict):
+        relations = {}
+        if "relations" in props:
+            errors.append("properties.relations: must be an object")
+    known = set(classified)
+    excluded = data.get("excluded")
+    if isinstance(excluded, dict):
+        for wave in WAVES:
+            values = excluded.get(wave)
+            if isinstance(values, list):
+                known.update(name for name in values if _name_ok(name))
+    class_flags = {}
+    for name, body in classes.items():
+        where = f"properties.classes.{name}"
+        if name not in CLASS_DIRECTION:
+            errors.append(f"{where}: unknown class {name!r}")
+        if not isinstance(body, dict):
+            errors.append(f"{where}: must be an object")
+            continue
+        flags = set()
+        for key in sorted(body):
+            if key not in CLASS_FLAGS:
+                errors.append(f"{where}: unknown property {key}")
+                continue
+            _evidence(body[key], f"{where}.{key}", errors, partner=False)
+            flags.add(key)
+        if "symmetric" in flags and "acyclic" in flags:
+            errors.append(f"class {name}: symmetric and acyclic contradict")
+        class_flags[name] = flags
+    relation_flags = {}
+    inverses = {}
+    for name, body in relations.items():
+        where = f"properties.relations.{name}"
+        if name not in known:
+            errors.append(f"{where}: unknown relation {name}")
+        if not isinstance(body, dict):
+            errors.append(f"{where}: must be an object")
+            continue
+        flags = set()
+        for key in sorted(body):
+            if key not in RELATION_FLAGS:
+                errors.append(f"{where}: unknown property {key}")
+                continue
+            if key == "inverse_of":
+                partner = _evidence(body[key], f"{where}.inverse_of", errors, partner=True)
+                if partner is not None:
+                    if partner not in known:
+                        errors.append(f"{where}.inverse_of: unknown relation {partner}")
+                    else:
+                        inverses[name] = partner
+                flags.add(key)
+            elif key == "disjoint_with":
+                items = body[key]
+                if not isinstance(items, list) or not items:
+                    errors.append(f"{where}.disjoint_with: must be a non-empty array")
+                    continue
+                partners = []
+                for index, item in enumerate(items):
+                    partner = _evidence(item, f"{where}.disjoint_with[{index}]", errors, partner=True)
+                    if partner == name:
+                        errors.append(f"{where}.disjoint_with: disjoint with itself")
+                    elif partner is not None and partner not in known:
+                        errors.append(f"{where}.disjoint_with: unknown relation {partner}")
+                    if partner is not None:
+                        partners.append(partner)
+                if partners != sorted(set(partners)):
+                    errors.append(f"{where}.disjoint_with: must be sorted and unique")
+                flags.add(key)
+            else:
+                _evidence(body[key], f"{where}.{key}", errors, partner=False)
+                flags.add(key)
+        if "symmetric" in flags and "acyclic" in flags:
+            errors.append(f"relation {name}: symmetric and acyclic contradict")
+        relation_flags[name] = flags
+    for name, partner in sorted(inverses.items()):
+        if inverses.get(partner) != name:
+            errors.append("inverse pairs not mutually declared: " + " ".join(sorted((name, partner))))
+    for name, (_wave, category) in classified.items():
+        combined = class_flags.get(category, set()) | relation_flags.get(name, set())
+        split = "symmetric" in combined and "acyclic" in combined
+        same_object = (
+            ("symmetric" in relation_flags.get(name, set()) and "acyclic" in relation_flags.get(name, set()))
+            or ("symmetric" in class_flags.get(category, set()) and "acyclic" in class_flags.get(category, set()))
+        )
+        if split and not same_object:
+            errors.append(f"{name}: symmetric and acyclic contradict")
+
+
+def _property_rows(data):
+    rows = []
+    props = data["properties"]
+    for scope, label in (("classes", "class"), ("relations", "relation")):
+        for name in sorted(props[scope]):
+            body = props[scope][name]
+            for key in sorted(body):
+                if key == "disjoint_with":
+                    for item in body[key]:
+                        rows.append({
+                            "name": name, "property": key, "reason": item["reason"],
+                            "relation": item["relation"], "scope": label, "since": item["since"],
+                        })
+                elif key == "inverse_of":
+                    item = body[key]
+                    rows.append({
+                        "name": name, "property": key, "reason": item["reason"],
+                        "relation": item["relation"], "scope": label, "since": item["since"],
+                    })
+                else:
+                    item = body[key]
+                    rows.append({
+                        "name": name, "property": key, "reason": item["reason"],
+                        "scope": label, "since": item["since"],
+                    })
+    return rows
 
 
 def validate_document(data):
@@ -129,6 +310,7 @@ def validate_document(data):
                 errors.append(f"excluded.{wave}: names must be non-empty strings")
             elif name in mapping:
                 errors.append(f"{wave}: {name} is both classified and excluded")
+    _validate_properties(data, classified, errors)
     return sorted(set(errors))
 
 
@@ -196,6 +378,95 @@ def _alias_candidates(edges_by_name):
                 found.append({"detection": "inverse-pair", "folded": False, "relations": relations})
     found.sort(key=lambda item: (item["detection"], item["relations"]))
     return found
+
+
+def _class_of(table, relation):
+    for wave in WAVES:
+        mapping = table.get(wave)
+        if isinstance(mapping, dict) and relation in mapping:
+            return mapping[relation]
+    return None
+
+
+def _flagged(table, relation, flag):
+    props = table.get("properties") if isinstance(table.get("properties"), dict) else {}
+    classes = props.get("classes") if isinstance(props.get("classes"), dict) else {}
+    relations = props.get("relations") if isinstance(props.get("relations"), dict) else {}
+    category = _class_of(table, relation)
+    class_body = classes.get(category) if isinstance(classes.get(category), dict) else {}
+    relation_body = relations.get(relation) if isinstance(relations.get(relation), dict) else {}
+    return flag in class_body or flag in relation_body
+
+
+def _inverse_partner(table, relation):
+    props = table.get("properties") if isinstance(table.get("properties"), dict) else {}
+    relations = props.get("relations") if isinstance(props.get("relations"), dict) else {}
+    body = relations.get(relation)
+    if not isinstance(body, dict):
+        return None
+    inverse = body.get("inverse_of")
+    if isinstance(inverse, dict) and _name_ok(inverse.get("relation")):
+        return inverse["relation"]
+    return None
+
+
+def _node_types(nodes):
+    found = {}
+    if not isinstance(nodes, list):
+        return found
+    for node in nodes:
+        if isinstance(node, dict) and _name_ok(node.get("id")) and _name_ok(node.get("type")):
+            found[node["id"]] = node["type"]
+    return found
+
+
+def property_candidates(table, edges_by_name, node_types):
+    """Alias, inverse, symmetric, and polysemy candidates. Nothing is folded."""
+    found = []
+    for item in _alias_candidates(edges_by_name):
+        declared = False
+        if item["detection"] == "inverse-pair":
+            left, right = item["relations"]
+            declared = _inverse_partner(table, left) == right and _inverse_partner(table, right) == left
+        row = {"declared": declared, "detection": item["detection"], "folded": False, "relations": item["relations"]}
+        found.append(row)
+    for name in sorted(edges_by_name):
+        edges = edges_by_name[name]
+        if edges and _symmetric(edges) and any(edge["source"] != edge["target"] for edge in edges):
+            found.append({
+                "declared": _flagged(table, name, "symmetric"),
+                "detection": "symmetric",
+                "folded": False,
+                "relations": [name],
+            })
+    notes = []
+    if not node_types:
+        notes.append("polysemy: skipped; nodes have no type")
+    else:
+        patterns = defaultdict(lambda: defaultdict(int))
+        for name, edges in edges_by_name.items():
+            for edge in edges:
+                source = node_types.get(edge["source"])
+                target = node_types.get(edge["target"])
+                if source and target:
+                    patterns[name][(source, target)] += 1
+        for name in sorted(patterns):
+            observed = patterns[name]
+            if len(observed) < 2:
+                continue
+            rows = [
+                {"edges": count, "source": source, "target": target}
+                for (source, target), count in sorted(observed.items())
+            ]
+            found.append({
+                "declared": False,
+                "detection": "polysemy",
+                "folded": False,
+                "patterns": rows,
+                "relations": [name],
+            })
+    found.sort(key=lambda item: (item["detection"], item["relations"]))
+    return found, notes
 
 
 def _load_knowledgegraph(directory):
@@ -333,6 +604,11 @@ def _render_text(payload):
         lines.append(f"onto {onto['path']} sha256 {onto['sha256']}")
     for error in payload["errors"]:
         lines.append(f"error {error}")
+    for row in payload.get("properties", []):
+        partner = f" {row['relation']}" if "relation" in row else ""
+        lines.append(
+            f"property {row['scope']} {row['name']} {row['property']}{partner} since {row['since']}"
+        )
     for row in payload.get("relations", []):
         lines.append(
             f"relation {row['profile']} {row['relation']} class {row['class']} direction {row['direction']}"
@@ -342,6 +618,21 @@ def _render_text(payload):
             lines.append(f"excluded {wave} {name}")
     for wave in sorted(payload.get("waves", {})):
         body = payload["waves"][wave]
+        if "candidates" in body:
+            lines.append(f"wave {wave}")
+            for note in body.get("notes", []):
+                lines.append(f"note {note}")
+            for item in body["candidates"]:
+                declared = "yes" if item["declared"] else "no"
+                patterns = ""
+                if "patterns" in item:
+                    patterns = " " + " ".join(
+                        f"{row['source']}->{row['target']}:{row['edges']}" for row in item["patterns"]
+                    )
+                lines.append(
+                    f"candidate {item['detection']} declared {declared} {' '.join(item['relations'])}{patterns}"
+                )
+            continue
         part = body["partition"]
         lines.append(f"wave {wave}")
         lines.append(
@@ -376,18 +667,20 @@ def _emit(text, output):
 
 
 def _table_path(args):
-    if args.table is not None:
-        return str(args.table)
-    env = (os.environ.get("TAXONTOY_TABLE") or "").strip()
+    text = _clean(args.table)
+    if text:
+        return text
+    env = _clean(os.environ.get("TAXONTOY_TABLE"))
     if env:
         return env
     raise ValueError("pass the table path or set TAXONTOY_TABLE")
 
 
 def _onto_path(args):
-    if args.onto is not None:
-        return str(args.onto)
-    env = (os.environ.get("ONTO_CHECKOUT") or "").strip()
+    text = _clean(args.onto)
+    if text:
+        return text
+    env = _clean(os.environ.get("ONTO_CHECKOUT"))
     if env:
         return env
     raise ValueError("pass --onto or set ONTO_CHECKOUT")
@@ -416,6 +709,7 @@ def _validate_payload(path, data, errors):
     }
     if not errors:
         payload["excluded"] = {wave: list(data["excluded"][wave]) for wave in WAVES}
+        payload["properties"] = _property_rows(data)
         payload["relations"] = [
             {
                 "class": data[wave][relation],
@@ -431,9 +725,11 @@ def _validate_payload(path, data, errors):
 
 def _parse_graphs(values):
     graphs = {wave: [] for wave in WAVES}
+    types = {wave: {} for wave in WAVES}
     seen = set()
     for value in values:
         wave, sep, path = value.partition("=")
+        path = path.strip()
         if sep != "=" or wave not in WAVES or path == "":
             raise ValueError("use --graph audit|concepts|cases=PATH")
         if path in seen:
@@ -443,10 +739,11 @@ def _parse_graphs(values):
         if not isinstance(data, dict) or not isinstance(data.get("edges"), list):
             raise ValueError(f"{path}: graph JSON must be an object with an edges array")
         graphs[wave].extend(data["edges"])
+        types[wave].update(_node_types(data.get("nodes")))
     missing = [wave for wave in WAVES if not graphs[wave]]
     if missing:
         raise ValueError("missing graph for " + ", ".join(missing))
-    return graphs, sorted(seen)
+    return graphs, types, sorted(seen)
 
 
 def _add_format(parser, default):
@@ -472,24 +769,56 @@ def main(argv=None):
     cover.add_argument("--strict", action="store_true", help="exit 2 when coverage is not closed")
     _add_format(cover, "json")
 
+    candidates = commands.add_parser("candidates", help="report alias and property candidates without folding")
+    candidates.add_argument("table", nargs="?", type=Path)
+    candidates.add_argument("--graph", action="append", default=[], metavar="WAVE=PATH")
+    _add_format(candidates, "json")
+
     args = parser.parse_args(argv)
     try:
         fmt = _format(args)
+        output = _clean(args.output) or None
         table_path = _table_path(args)
         data = _load_json(table_path)
         errors = validate_document(data)
         if args.command == "validate":
             payload = _validate_payload(table_path, data if isinstance(data, dict) else {}, errors)
-            _emit(_render(payload, fmt), args.output)
+            _emit(_render(payload, fmt), output)
             return 0 if payload["ok"] else 1
         if errors:
             payload = _validate_payload(table_path, data if isinstance(data, dict) else {}, errors)
-            payload["command"] = "coverage"
-            _emit(_render(payload, fmt), args.output)
+            payload["command"] = args.command
+            _emit(_render(payload, fmt), output)
             return 1
+        graphs, types, graph_paths = _parse_graphs(args.graph)
+        if args.command == "candidates":
+            waves = {}
+            report_errors = []
+            for wave in WAVES:
+                grouped = defaultdict(list)
+                malformed = 0
+                for edge in graphs[wave]:
+                    try:
+                        grouped[_relation_name(edge)].append(edge)
+                    except (KeyError, ValueError):
+                        malformed += 1
+                rows, notes = property_candidates(data, grouped, types[wave])
+                if malformed:
+                    report_errors.append(f"malformed {wave}: {malformed}")
+                waves[wave] = {"candidates": rows, "notes": notes}
+            payload = {
+                "command": "candidates",
+                "errors": sorted(set(report_errors)),
+                "inputs": _inputs([table_path, *graph_paths]),
+                "ok": not report_errors,
+                "tool": "taxontoy",
+                "version": __version__,
+                "waves": waves,
+            }
+            _emit(_render(payload, fmt), output)
+            return 0 if payload["ok"] else 1
         onto = _onto_path(args)
         knowledgegraph = _load_knowledgegraph(onto)
-        graphs, graph_paths = _parse_graphs(args.graph)
         waves, cover_errors = cover_waves(data, graphs, knowledgegraph)
         payload = {
             "command": "coverage",
@@ -501,7 +830,7 @@ def main(argv=None):
             "version": __version__,
             "waves": waves,
         }
-        _emit(_render(payload, fmt), args.output)
+        _emit(_render(payload, fmt), output)
         if cover_errors and args.strict:
             return 2
         return 0 if payload["ok"] else 1

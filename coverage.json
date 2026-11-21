@@ -16,7 +16,7 @@
     },
     {
       "path": "otl-relations.json",
-      "sha256": "011c845dc366bf6e5913cfdce7b87651276acb2a381f8cb36f7d7db755dc65aa"
+      "sha256": "141bfc1df14eec80ca7dedd5dd5f1310b839a675d14aa726b14133884d0f8afb"
     }
   ],
   "ok": true,
@@ -25,7 +25,7 @@
     "sha256": "3f9a7540d8bfb4917dd521b7d19a56a68699146e60af759cf67b0f7a3263683f"
   },
   "tool": "taxontoy",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "waves": {
     "audit": {
       "alias_candidates": [
