@@ -60,7 +60,7 @@
 
 `taxontoy reconcile` は、`repos` の `workflow-pin` 辺と、gh_identity の `pin-audit` が書いた `gh-identity-pin-audit/1` の JSON を集合として比べます。TOO は GitHub も gh_identity も呼びません。監査ファイルは `--pin-audit` です。`--repo` はその監査が対象にした workflow のあるリポジトリです。ピンは source、workflow の path、固定先、SHA で一意です。SHA とリポジトリ名は小文字に揃えます。同じ source、path、固定先で SHA だけが違う組は `different_sha` です。片方にしか無いピンは `only_taxontoy` と `only_pin_audit` です。SHA まで同じ組は `same` です。名前を伏せた `unavailable` は件数だけを `skipped` に入れ、リポジトリ名は出しません。差が無いときは 0、あるときは 1、`--strict` のときは 2 です。
 
-辺の関係名は `kind` があればそれ、無ければ `relation` です。表を省くと、このプログラムの隣にある `otl-relations.json` を使います。`properties` と `reconcile` でグラフもマニフェストも省くと `fixtures/repos/graph.json` を使います。循環検出とトポロジカル順は ONTO の `knowledgegraph.py` を、`coverage` のときだけ呼びます。ONTO の場所は `--onto-root`、環境変数 `ONTO_ROOT`、隣の `../ONTO`、そこから上へ辿った checkout の順です。マーカー `knowledgegraph.py` があるディレクトリだけを checkout とみなします。見つからないときは、設定する環境変数の名前を含む日本語のエラーで止まります。`--onto-root` に空白だけを渡すと、そこでは止め、`ONTO_ROOT` には落ちません。`ONTO_ROOT` が空白だけなら未設定として推定に進みます。`validate` や `--help` など ONTO を使わないコマンドは、checkout が無くても動きます。報告に載るのは非循環かどうかと、サンプル閉路の件数だけです。ノード ID は出しません。
+辺の関係名は `kind` があればそれ、無ければ `relation` です。表を省くと、このプログラムの隣にある `otl-relations.json` を使います。`properties` と `reconcile` でグラフもマニフェストも省くと `fixtures/repos/graph.json` を使います。循環検出とトポロジカル順は ONTO の `knowledgegraph.py` を、`coverage` と下記の `structure` で使います。ONTO の場所は `--onto-root`、環境変数 `ONTO_ROOT`、隣の `../ONTO`、そこから上へ辿った checkout の順です。マーカー `knowledgegraph.py` があるディレクトリだけを checkout とみなします。見つからないときは、設定する環境変数の名前を含む日本語のエラーで止まります。`--onto-root` に空白だけを渡すと、そこでは止め、`ONTO_ROOT` には落ちません。`ONTO_ROOT` が空白だけなら未設定として推定に進みます。`validate` や `--help` など ONTO を使わないコマンドは、checkout が無くても動きます。報告に載るのは非循環かどうかと、サンプル閉路の件数だけです。ノード ID は出しません。
 
 監査グラフは同じ端点に別名の辺も足します。`taxontoy coverage` は辺数を名前ごとに数え、`depends_on` を `dependsOn` に足しません。`taxontoy candidates` は畳まずに候補だけを出します。区切りの違い（`dependsOn` / `depends_on` / `depends-on`）、大文字小文字の違い、逆向きが常に対になる組、辺が常に逆向きにもある関係、端点の種類が二つ以上に割れる関係です。ノードに `type` が無いグラフでは多義の検出を省き、その旨を書きます。宣言と一致する候補には `declared` を付けますが、分類には使いません。`alias` の除外は、同じ端点・区切り・大文字小文字の候補を宣言済みにします。辺は足しません。
 
@@ -137,3 +137,13 @@ Python 3.11 以降です。依存パッケージはありません。`since` は
 ```sh
 uv run --no-project python -S -m unittest discover -s tests -v
 ```
+
+## SSIS の分子構造を分類する
+
+```sh
+python -S taxontoy.py structure model.json --onto-root ../ONTO
+```
+
+SSIS の `structure --output graph` で作った JSON を読み、モデル → 残基 → 原子の包含関係を ONTO の語彙検査とトポロジカル順序で検証します。原子間の接触候補は対称な組として数え、逆向きの重複・自己接触を検出します。接触で三角形ができても包含の循環には数えません。
+
+残基名から標準核酸塩基、標準アミノ酸、その他の成分の件数を返します。「その他」には修飾残基・水・イオンなどが含まれます。出力 JSON の `ok`、`errors`、`hierarchy` で検証結果を確認できます。検証に失敗したときの終了コードは 1 です。

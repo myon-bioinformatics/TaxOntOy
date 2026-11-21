@@ -672,9 +672,13 @@ def property_candidates(table, edges_by_name, node_types):
 
 def _load_knowledgegraph(directory):
     """Load knowledgegraph.py from a resolved root. A broken file is one line."""
-    path = Path(directory) / "knowledgegraph.py"
+    return _load_onto_module(directory, "knowledgegraph", ("relation_cycles", "topological_order"))
+
+
+def _load_onto_module(directory, name, required):
+    path = Path(directory) / (name + ".py")
     try:
-        spec = importlib.util.spec_from_file_location("taxontoy_onto_knowledgegraph", path)
+        spec = importlib.util.spec_from_file_location("taxontoy_onto_" + name, path)
         if spec is None or spec.loader is None:
             raise ValueError(f"cannot load {path}")
         module = importlib.util.module_from_spec(spec)
@@ -683,7 +687,7 @@ def _load_knowledgegraph(directory):
         raise
     except Exception as error:
         raise ValueError(f"{path}: {error}") from None
-    for attr in ("relation_cycles", "topological_order"):
+    for attr in required:
         if not callable(getattr(module, attr, None)):
             raise ValueError(f"{path} has no {attr}")
     return module
@@ -1959,6 +1963,54 @@ def _parse_graphs(values):
     return graphs, types, sorted(seen)
 
 
+def classify_structure(graph, root):
+    """Classify the relations and components of one SSIS coordinate observation."""
+    if not isinstance(graph, dict) or graph.get("schema") != "structure-graph/1":
+        raise ValueError("expected structure-graph/1")
+    nodes, edges = graph.get("nodes"), graph.get("edges")
+    for rows, keys in ((nodes, ("id", "type")), (edges, ("source", "relation", "target"))):
+        if not isinstance(rows, list) or any(not isinstance(row, dict) or
+                any(not isinstance(row.get(k), str) or not row[k] for k in keys) for row in rows):
+            raise ValueError("invalid structure graph nodes or edges")
+    vocabulary = {"hasResidue": (["Model"], "Residue"), "hasAtom": (["Residue"], "Atom"),
+                  "nearAtom": (["Atom"], "Atom")}
+    checker = _load_onto_module(root, "ontology", ("violations",))
+    errors = checker.violations(graph, vocabulary)
+    hierarchy = [e for e in edges if e["relation"] in ("hasResidue", "hasAtom")]
+    order = _load_knowledgegraph(root).topological_order(hierarchy)
+    parents = defaultdict(int)
+    for edge in hierarchy:
+        parents[edge["target"]] += 1
+    if sum(n["type"] == "Model" for n in nodes) != 1:
+        errors.append({"kind": "model-count"})
+    residues = defaultdict(int)
+    for node in nodes:
+        if node["type"] in ("Atom", "Residue") and parents[node["id"]] != 1:
+            errors.append({"kind": "parent-count", "node": node["id"]})
+        if node["type"] == "Residue":
+            component = node.get("residue")
+            if component in ("A", "C", "G", "U", "DA", "DC", "DG", "DT"):
+                group = "canonical-nucleotide"
+            elif component in "ALA ARG ASN ASP CYS GLN GLU GLY HIS ILE LEU LYS MET PHE PRO SER THR TRP TYR VAL".split():
+                group = "canonical-amino-acid"
+            else:
+                group = "other-component"
+            residues[group] += 1
+    pairs = set()
+    for edge in edges:
+        if edge["relation"] != "nearAtom":
+            continue
+        pair = tuple(sorted((edge["source"], edge["target"])))
+        if pair in pairs or pair[0] == pair[1] or edge.get("symmetric") is not True:
+            errors.append({"kind": "invalid-undirected-contact", "pair": pair})
+        pairs.add(pair)
+    if order["cycle"] is not None:
+        errors.append({"kind": "containment-cycle"})
+    return {"ok": not errors, "errors": errors, "hierarchy": order,
+            "containment_edges": len(hierarchy), "distinct_contact_pairs": len(pairs),
+            "residue_classes": dict(residues), "source_sha256": graph.get("source_sha256")}
+
+
 def _add_format(parser, default):
     parser.add_argument("--format", choices=("text", "json"), help="text or json; json is canonical machine output")
     parser.add_argument("--json", action="store_true", help="shorthand for --format json")
@@ -1970,6 +2022,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="taxontoy", description=__doc__)
     parser.add_argument("--version", action="version", version=f"taxontoy {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
+
+    structure = commands.add_parser("structure", help="classify an SSIS coordinate graph and check containment")
+    structure.add_argument("graph", type=Path)
+    structure.add_argument("--onto-root", type=Path)
+    structure.add_argument("--output", type=Path)
 
     validate = commands.add_parser("validate", help="check the classification table")
     validate.add_argument("table", nargs="?", type=Path)
@@ -2033,6 +2090,10 @@ def main(argv=None):
         return 1
     args = parser.parse_args(argv)
     try:
+        if args.command == "structure":
+            payload = classify_structure(_load_json(args.graph), _onto_root(args.onto_root))
+            _emit(_dump(payload), args.output)
+            return 0 if payload["ok"] else 1
         fmt = _format(args)
         output = _clean(args.output) or None
         if args.command == "graph":
