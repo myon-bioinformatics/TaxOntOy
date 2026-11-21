@@ -66,7 +66,7 @@ def _clean(value):
 
 
 def _iso_date(value):
-    if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+    if not isinstance(value, str) or re.fullmatch(r"\d{4}-\d{2}-\d{2}", value, re.ASCII) is None:
         return False
     try:
         datetime.date.fromisoformat(value)
