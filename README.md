@@ -1,6 +1,14 @@
 # TaxOntOy
 
+<img src="docs/assets/taxontoy-icon.png" width="160" height="160" alt="TaxOntOy アイコン">
+
 [otl-relations.json](otl-relations.json) は OnTautoLogy の第一弾（監査）、第二弾（概念）、第三弾（事例）の関係を、分析したい意味に対応づける最小の分類表です。キーは OTL のグラフ JSON に現れる関係名です。元の辺の向きと ID を保持します。
+
+<img src="docs/assets/favicon.png" alt="" width="32" height="32"> [ファビコン（32 × 32）](docs/assets/favicon.png)
+
+[![OnTautoLogy のグラフの関係名を TaxOntOy の分類表で意味クラスに対応づけ、TopOntoLogy で分類ごとの構造を調べる流れ](docs/assets/taxontoy-overview.jpg)](docs/assets/taxontoy-overview.jpg)
+
+図の右列は構造分析を担当する TopOntoLogy（TOL）です。
 
 第二弾では上位から下位へ向かう `narrower` と、両方向が別の辺になる `similarTo` を別々に集計します。第三弾では候補、人の判断記録、肯定を別々に数えます。否定クラス `negation` は知っていますが、固定した事例グラフに `holds false` の辺が無いので表には入れていません。その辺が現れたら未分類になり、検査が失敗します。未登録の関係は元のグラフに残ります。TopOntoLogy の `topology.py` は各弾のオブジェクトを関係名からクラス名への対応として読み、分類ごとの構造を集計します。OnTautoLogy が事例の判定を担当します。
 
