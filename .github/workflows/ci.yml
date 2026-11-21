@@ -1,0 +1,77 @@
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python: ['3.11', '3.15']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: myon-bioinformatics/ONTO
+          # First-parent merge of pull request #6 on main.
+          ref: 8ca1ee5dc8c2714ddcdea6db6774f7168c0e617b
+          path: onto
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: myon-bioinformatics/OnTautoLogy
+          # First-parent merge of pull request #38 on main.
+          ref: b062960e3ef63aa80d6d4c9b6e028219f1690bc4
+          path: otl
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          version: latest
+          python-version: ${{ matrix.python }}
+      - name: Test
+        env:
+          ONTO_CHECKOUT: onto
+        run: uv run --no-project python -S -m unittest discover -s tests -v
+      - name: Regenerate coverage and fail on drift
+        env:
+          ONTO_CHECKOUT: onto
+          PYTHONPATH: otl
+        run: |
+          mkdir -p build
+          cat > "$RUNNER_TEMP/canonicalize_graphs.py" << 'PY'
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          def canonical(payload, destination):
+              if isinstance(payload.get("edges"), list):
+                  payload["edges"] = sorted(payload["edges"], key=lambda edge: json.dumps(edge, ensure_ascii=False, sort_keys=True))
+              if isinstance(payload.get("nodes"), list):
+                  payload["nodes"] = sorted(payload["nodes"], key=lambda node: json.dumps(node, ensure_ascii=False, sort_keys=True))
+              Path(destination).write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+          def capture(args):
+              result = subprocess.run(args, capture_output=True)
+              if result.returncode not in (0, 2):
+                  sys.stderr.buffer.write(result.stderr)
+                  raise SystemExit(result.returncode)
+              return json.loads(result.stdout)
+
+          canonical(capture([sys.executable, "-S", "otl/gh_audit/gh_audit.py", "audit", "otl/examples/audit-20261114.json"]), "build/audit.json")
+          from ontautology import concept_edges
+          corpus = json.loads(Path("otl/examples/concepts-20261115.json").read_text(encoding="utf-8"))
+          canonical(concept_edges(corpus), "build/concepts.json")
+          canonical(capture([sys.executable, "-S", "otl/tools/tautology.py", "cases", "otl/examples/concepts-20261115.json", "--graph"]), "build/cases.json")
+          PY
+          uv run --no-project python -S "$RUNNER_TEMP/canonicalize_graphs.py"
+          uv run --no-project python -S taxontoy.py coverage otl-relations.json \
+            --graph audit=build/audit.json \
+            --graph concepts=build/concepts.json \
+            --graph cases=build/cases.json \
+            --onto "$ONTO_CHECKOUT" \
+            --format json \
+            --output build/coverage.json
+          diff -u coverage.json build/coverage.json
