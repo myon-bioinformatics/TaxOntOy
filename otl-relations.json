@@ -1,4 +1,5 @@
 {
+  "schema": "taxontoy-relations/1",
   "audit": {
     "dependsOn": "dependency",
     "duplicates": "overlap"
@@ -11,7 +12,47 @@
     "to_model": "unknown-element",
     "candidate": "hypothesis",
     "judgment": "judgment-record",
-    "holds true": "affirmation",
-    "holds false": "negation"
+    "holds true": "affirmation"
+  },
+  "direction": {
+    "candidate": "forward",
+    "dependsOn": "forward",
+    "duplicates": "undirected",
+    "holds true": "forward",
+    "judgment": "forward",
+    "narrower": "forward",
+    "similarTo": "mutual",
+    "to_model": "forward"
+  },
+  "excluded": {
+    "audit": [
+      "belongsTo",
+      "blocks",
+      "changesFile",
+      "depends_on",
+      "derived_from",
+      "hasBase",
+      "hasHead",
+      "hasMain",
+      "hasRun",
+      "has_status",
+      "integrates_into",
+      "missingFromMain",
+      "observes",
+      "overlapsWith",
+      "runsAt",
+      "targets",
+      "targetsBranch",
+      "updates"
+    ],
+    "concepts": [
+      "derived_from",
+      "differentiaElement",
+      "genusElement",
+      "hasElement",
+      "hasName",
+      "observes"
+    ],
+    "cases": []
   }
 }

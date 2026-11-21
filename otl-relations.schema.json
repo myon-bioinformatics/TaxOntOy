@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/myon-bioinformatics/TaxOntOy/otl-relations.schema.json",
+  "title": "TaxOntOy relation classification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "audit", "concepts", "cases", "direction", "excluded"],
+  "properties": {
+    "schema": {"const": "taxontoy-relations/1"},
+    "audit": {"$ref": "#/$defs/profile"},
+    "concepts": {"$ref": "#/$defs/profile"},
+    "cases": {"$ref": "#/$defs/profile"},
+    "direction": {
+      "type": "object",
+      "description": "Declared direction of every classified relation. JSON object keys must be unique; the Python validator rejects duplicates.",
+      "additionalProperties": {"enum": ["forward", "mutual", "undirected"]}
+    },
+    "excluded": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["audit", "concepts", "cases"],
+      "properties": {
+        "audit": {"$ref": "#/$defs/nameList"},
+        "concepts": {"$ref": "#/$defs/nameList"},
+        "cases": {"$ref": "#/$defs/nameList"}
+      }
+    }
+  },
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Relation name to semantic class. TopOntoLogy reads these values as strings. Keys must be unique.",
+      "additionalProperties": {
+        "enum": [
+          "affirmation",
+          "dependency",
+          "hierarchy",
+          "hypothesis",
+          "judgment-record",
+          "negation",
+          "overlap",
+          "similarity",
+          "unknown-element"
+        ]
+      }
+    },
+    "nameList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

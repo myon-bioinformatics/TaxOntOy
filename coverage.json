@@ -1,0 +1,308 @@
+{
+  "command": "coverage",
+  "errors": [],
+  "inputs": [
+    {
+      "path": "build/audit.json",
+      "sha256": "a6335589de2787391af0bd394d4d534ee4ddf978dbeb80d95f4a544d0d570639"
+    },
+    {
+      "path": "build/cases.json",
+      "sha256": "c49a743e556ed6cf813c7b1c0d2ffd3dd81e4074e8e06646bdbd1571582ff155"
+    },
+    {
+      "path": "build/concepts.json",
+      "sha256": "9029f331c46195d8ca903510b6a2f3753e558c041dcc8b213ef30f06fc731276"
+    },
+    {
+      "path": "otl-relations.json",
+      "sha256": "011c845dc366bf6e5913cfdce7b87651276acb2a381f8cb36f7d7db755dc65aa"
+    }
+  ],
+  "ok": true,
+  "onto": {
+    "path": "onto/knowledgegraph.py",
+    "sha256": "3f9a7540d8bfb4917dd521b7d19a56a68699146e60af759cf67b0f7a3263683f"
+  },
+  "tool": "taxontoy",
+  "version": "0.1.0",
+  "waves": {
+    "audit": {
+      "alias_candidates": [
+        {
+          "detection": "inverse-pair",
+          "folded": false,
+          "relations": [
+            "blocks",
+            "dependsOn"
+          ]
+        },
+        {
+          "detection": "inverse-pair",
+          "folded": false,
+          "relations": [
+            "blocks",
+            "depends_on"
+          ]
+        },
+        {
+          "detection": "inverse-pair",
+          "folded": false,
+          "relations": [
+            "has_status",
+            "observes"
+          ]
+        },
+        {
+          "detection": "inverse-pair",
+          "folded": false,
+          "relations": [
+            "has_status",
+            "targets"
+          ]
+        },
+        {
+          "detection": "same-pairs",
+          "folded": false,
+          "relations": [
+            "changesFile",
+            "updates"
+          ]
+        },
+        {
+          "detection": "same-pairs",
+          "folded": false,
+          "relations": [
+            "dependsOn",
+            "depends_on"
+          ]
+        },
+        {
+          "detection": "same-pairs",
+          "folded": false,
+          "relations": [
+            "duplicates",
+            "overlapsWith"
+          ]
+        },
+        {
+          "detection": "same-pairs",
+          "folded": false,
+          "relations": [
+            "observes",
+            "targets"
+          ]
+        },
+        {
+          "detection": "separator",
+          "folded": false,
+          "relations": [
+            "dependsOn",
+            "depends_on"
+          ]
+        }
+      ],
+      "class_edges": {
+        "dependency": 13,
+        "overlap": 25
+      },
+      "excluded_edges": {
+        "belongsTo": 691,
+        "blocks": 13,
+        "changesFile": 564,
+        "depends_on": 13,
+        "derived_from": 14,
+        "hasBase": 14,
+        "hasHead": 14,
+        "hasMain": 14,
+        "hasRun": 209,
+        "has_status": 14,
+        "integrates_into": 14,
+        "missingFromMain": 6,
+        "observes": 14,
+        "overlapsWith": 25,
+        "runsAt": 93,
+        "targets": 14,
+        "targetsBranch": 14,
+        "updates": 564
+      },
+      "names": {
+        "classified": [
+          "dependsOn",
+          "duplicates"
+        ],
+        "excluded": [
+          "belongsTo",
+          "blocks",
+          "changesFile",
+          "depends_on",
+          "derived_from",
+          "hasBase",
+          "hasHead",
+          "hasMain",
+          "hasRun",
+          "has_status",
+          "integrates_into",
+          "missingFromMain",
+          "observes",
+          "overlapsWith",
+          "runsAt",
+          "targets",
+          "targetsBranch",
+          "updates"
+        ],
+        "stale": [],
+        "unclassified": []
+      },
+      "partition": {
+        "classified": 2,
+        "excluded": 18,
+        "holds": true,
+        "stale": 0,
+        "total": 20,
+        "unclassified": 0
+      },
+      "relations": {
+        "dependsOn": {
+          "acyclic": true,
+          "class": "dependency",
+          "cycle_samples": 0,
+          "direction": "forward",
+          "edges": 13,
+          "symmetric": false
+        },
+        "duplicates": {
+          "acyclic": true,
+          "class": "overlap",
+          "cycle_samples": 0,
+          "direction": "undirected",
+          "edges": 25,
+          "symmetric": false
+        }
+      },
+      "unclassified_edges": {}
+    },
+    "cases": {
+      "alias_candidates": [],
+      "class_edges": {
+        "affirmation": 3,
+        "hypothesis": 3,
+        "judgment-record": 3,
+        "unknown-element": 1
+      },
+      "excluded_edges": {},
+      "names": {
+        "classified": [
+          "candidate",
+          "holds true",
+          "judgment",
+          "to_model"
+        ],
+        "excluded": [],
+        "stale": [],
+        "unclassified": []
+      },
+      "partition": {
+        "classified": 4,
+        "excluded": 0,
+        "holds": true,
+        "stale": 0,
+        "total": 4,
+        "unclassified": 0
+      },
+      "relations": {
+        "candidate": {
+          "acyclic": true,
+          "class": "hypothesis",
+          "cycle_samples": 0,
+          "direction": "forward",
+          "edges": 3,
+          "symmetric": false
+        },
+        "holds true": {
+          "acyclic": true,
+          "class": "affirmation",
+          "cycle_samples": 0,
+          "direction": "forward",
+          "edges": 3,
+          "symmetric": false
+        },
+        "judgment": {
+          "acyclic": true,
+          "class": "judgment-record",
+          "cycle_samples": 0,
+          "direction": "forward",
+          "edges": 3,
+          "symmetric": false
+        },
+        "to_model": {
+          "acyclic": true,
+          "class": "unknown-element",
+          "cycle_samples": 0,
+          "direction": "forward",
+          "edges": 1,
+          "symmetric": false
+        }
+      },
+      "unclassified_edges": {}
+    },
+    "concepts": {
+      "alias_candidates": [],
+      "class_edges": {
+        "hierarchy": 29,
+        "similarity": 62
+      },
+      "excluded_edges": {
+        "derived_from": 43,
+        "differentiaElement": 43,
+        "genusElement": 114,
+        "hasElement": 408,
+        "hasName": 84,
+        "observes": 43
+      },
+      "names": {
+        "classified": [
+          "narrower",
+          "similarTo"
+        ],
+        "excluded": [
+          "derived_from",
+          "differentiaElement",
+          "genusElement",
+          "hasElement",
+          "hasName",
+          "observes"
+        ],
+        "stale": [],
+        "unclassified": []
+      },
+      "partition": {
+        "classified": 2,
+        "excluded": 6,
+        "holds": true,
+        "stale": 0,
+        "total": 8,
+        "unclassified": 0
+      },
+      "relations": {
+        "narrower": {
+          "acyclic": true,
+          "class": "hierarchy",
+          "cycle_samples": 0,
+          "direction": "forward",
+          "edges": 29,
+          "symmetric": false
+        },
+        "similarTo": {
+          "acyclic": false,
+          "class": "similarity",
+          "cycle_samples": 5,
+          "direction": "mutual",
+          "edges": 62,
+          "symmetric": true
+        }
+      },
+      "unclassified_edges": {}
+    }
+  }
+}
