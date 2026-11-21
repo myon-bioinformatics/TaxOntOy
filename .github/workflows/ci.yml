@@ -82,3 +82,10 @@ jobs:
             --format json \
             --output build/candidates.json
           diff -u candidates.json build/candidates.json
+          for profile in audit concepts cases; do
+            uv run --no-project python -S taxontoy.py rank-unclassified "build/${profile}.json" otl-relations.json \
+              --profile "$profile" \
+              --format json \
+              --output "build/ranking-${profile}.json"
+            diff -u "ranking-${profile}.json" "build/ranking-${profile}.json"
+          done

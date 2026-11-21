@@ -1,0 +1,28 @@
+{
+  "command": "rank-unclassified",
+  "counts": {
+    "classified": 10,
+    "edges": 10,
+    "nameless": 0,
+    "unclassified": 0
+  },
+  "errors": [],
+  "inputs": [
+    {
+      "path": "build/cases.json",
+      "sha256": "c49a743e556ed6cf813c7b1c0d2ffd3dd81e4074e8e06646bdbd1571582ff155"
+    },
+    {
+      "path": "otl-relations.json",
+      "sha256": "141bfc1df14eec80ca7dedd5dd5f1310b839a675d14aa726b14133884d0f8afb"
+    }
+  ],
+  "nameless": {
+    "edges": 0
+  },
+  "ok": true,
+  "profile": "cases",
+  "ranking": [],
+  "tool": "taxontoy",
+  "version": "0.3.0"
+}

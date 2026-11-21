@@ -1,0 +1,83 @@
+{
+  "command": "rank-unclassified",
+  "counts": {
+    "classified": 91,
+    "edges": 826,
+    "nameless": 0,
+    "unclassified": 735
+  },
+  "errors": [],
+  "inputs": [
+    {
+      "path": "build/concepts.json",
+      "sha256": "9029f331c46195d8ca903510b6a2f3753e558c041dcc8b213ef30f06fc731276"
+    },
+    {
+      "path": "otl-relations.json",
+      "sha256": "141bfc1df14eec80ca7dedd5dd5f1310b839a675d14aa726b14133884d0f8afb"
+    }
+  ],
+  "nameless": {
+    "edges": 0
+  },
+  "ok": true,
+  "profile": "concepts",
+  "ranking": [
+    {
+      "alias_candidates": [],
+      "edges": 408,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 1,
+      "relation": "hasElement",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 114,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 2,
+      "relation": "genusElement",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 84,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 3,
+      "relation": "hasName",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 43,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 4,
+      "relation": "derived_from",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 43,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 5,
+      "relation": "differentiaElement",
+      "status": "excluded"
+    },
+    {
+      "alias_candidates": [],
+      "edges": 43,
+      "elsewhere": null,
+      "folded": false,
+      "rank": 6,
+      "relation": "observes",
+      "status": "excluded"
+    }
+  ],
+  "tool": "taxontoy",
+  "version": "0.3.0"
+}

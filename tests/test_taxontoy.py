@@ -12,44 +12,34 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TABLE = ROOT / "otl-relations.json"
 ONTO = os.environ.get("ONTO_CHECKOUT")
-_SEEN = set()
 _COVER_DIR = Path(tempfile.mkdtemp(prefix="taxontoy-lines-"))
-_TARGET_SUFFIX = f"{os.sep}taxontoy.py"
+if str(ROOT / "tests") not in sys.path:
+    sys.path.insert(0, str(ROOT / "tests"))
 
+import branchcov
 
-def _hook(frame, event, arg):
-    if event == "line" and frame.f_code.co_filename.endswith(_TARGET_SUFFIX):
-        _SEEN.add(frame.f_lineno)
-    return _hook
-
-
-# The suite's own line partition traces this process and CLI children.
+# The suite's own line and branch partition traces this process and CLI children.
 # An external coverage.py run sees only the children, because this hook replaces the tracer.
-sys.settrace(_hook)
+branchcov.install()
 
 import taxontoy
 
 
 _WRAPPER = """
-import os, runpy, sys, trace
+import importlib.util, runpy, sys
 from pathlib import Path
-script, dest = sys.argv[1], sys.argv[2]
-sys.argv = [script, *sys.argv[3:]]
-tracer = trace.Trace(count=1, trace=0)
+script, dest, helper = sys.argv[1], sys.argv[2], sys.argv[3]
+spec = importlib.util.spec_from_file_location("branchcov", helper)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+mod.install()
+sys.argv = [script, *sys.argv[4:]]
 status = 0
 try:
-    tracer.runctx(
-        "runpy.run_path(script, run_name='__main__')",
-        {"runpy": runpy, "script": script},
-        {},
-    )
+    runpy.run_path(script, run_name="__main__")
 except SystemExit as exc:
     status = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
-lines = []
-for (filename, lineno), count in tracer.results().counts.items():
-    if count and os.path.abspath(filename) == os.path.abspath(script):
-        lines.append(str(lineno))
-Path(dest).write_text("\\n".join(sorted(lines, key=int)) + ("\\n" if lines else ""), encoding="utf-8")
+Path(dest).write_text(mod.dump(), encoding="utf-8")
 raise SystemExit(status)
 """
 
@@ -57,7 +47,10 @@ raise SystemExit(status)
 def run(args, *, cwd=None, env=None):
     dest = _COVER_DIR / f"{len(list(_COVER_DIR.iterdir()))}.txt"
     return subprocess.run(
-        [sys.executable, "-S", "-c", _WRAPPER, str(ROOT / "taxontoy.py"), str(dest), *args],
+        [
+            sys.executable, "-S", "-c", _WRAPPER,
+            str(ROOT / "taxontoy.py"), str(dest), str(ROOT / "tests" / "branchcov.py"), *args,
+        ],
         cwd=ROOT if cwd is None else cwd,
         capture_output=True,
         text=True,
@@ -768,6 +761,125 @@ class CoveragePathTests(unittest.TestCase):
             found,
         )
 
+    def test_remaining_conditional_arcs(self):
+        from unittest import mock
+
+        class Handle:
+            def __init__(self, suppress):
+                self.suppress = suppress
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return self.suppress
+
+            def read(self, _size):
+                raise OSError("boom")
+
+        with mock.patch.object(taxontoy.Path, "open", return_value=Handle(True)):
+            self.assertEqual(len(taxontoy._sha256("ignored")), 64)
+        with mock.patch.object(taxontoy.Path, "open", return_value=Handle(False)):
+            with self.assertRaises(OSError):
+                taxontoy._sha256("ignored")
+        class BoomDate:
+            @staticmethod
+            def fromisoformat(_value):
+                raise TypeError("boom")
+
+        with mock.patch.object(taxontoy.datetime, "date", BoomDate):
+            with self.assertRaises(TypeError):
+                taxontoy._iso_date("2026-11-15")
+
+        def evidence(body):
+            data = minimal_table()
+            data["properties"]["classes"]["hierarchy"] = {"transitive": body}
+            self.assertTrue(taxontoy.validate_document(data))
+
+        evidence({"since": "", "reason": "because"})
+        evidence({"since": 1, "reason": "because"})
+        evidence({"since": "  ", "reason": "because"})
+        evidence({"since": "2026-11-15", "reason": "   "})
+
+        taxontoy._alias_candidates({
+            "aaa": [],
+            "zzz": [{"source": "a", "target": "b"}],
+        })
+        self.assertIsNone(taxontoy._class_of({"audit": [], "concepts": {}, "cases": {}}, "dependsOn"))
+        sparse = {
+            "audit": {"dependsOn": "dependency"},
+            "concepts": {},
+            "cases": {},
+            "properties": {"classes": [], "relations": []},
+        }
+        self.assertFalse(taxontoy._flagged({"properties": []}, "dependsOn", "symmetric"))
+        self.assertFalse(taxontoy._flagged(sparse, "dependsOn", "symmetric"))
+        declared = {
+            "audit": {"dependsOn": "dependency"},
+            "concepts": {},
+            "cases": {},
+            "properties": {"classes": {}, "relations": {"dependsOn": {"symmetric": _evidence()}}},
+        }
+        self.assertTrue(taxontoy._flagged(declared, "dependsOn", "symmetric"))
+        self.assertIsNone(taxontoy._inverse_partner({"properties": []}, "dependsOn"))
+        self.assertIsNone(taxontoy._inverse_partner(sparse, "dependsOn"))
+        blank_inverse = {
+            "properties": {"relations": {"dependsOn": {"inverse_of": {"relation": "  "}}}},
+        }
+        self.assertIsNone(taxontoy._inverse_partner(blank_inverse, "dependsOn"))
+        taxontoy.property_candidates(minimal_table(), {
+            "empty": [],
+            "loop": [{"source": "a", "target": "a"}],
+        }, {})
+        self.assertFalse(taxontoy._forward_conflict([]))
+        self.assertFalse(taxontoy._forward_conflict([{"source": "a", "target": "a"}]))
+
+        table = minimal_table()
+        table["audit"]["ghost"] = "dependency"
+        table["direction"]["ghost"] = "forward"
+        table["excluded"]["audit"] = sorted([*table["excluded"]["audit"], "ghost"])
+        knowledgegraph = taxontoy._load_knowledgegraph(self.onto)
+        graphs = {wave: payload["edges"] for wave, payload in fixture_graphs().items()}
+        waves, _errors = taxontoy.cover_waves(table, graphs, knowledgegraph)
+        self.assertFalse(waves["audit"]["partition"]["holds"])
+        with mock.patch.object(taxontoy, "_relation_name", side_effect=TypeError("boom")):
+            with self.assertRaises(TypeError):
+                taxontoy.cover_waves(minimal_table(), graphs, knowledgegraph)
+
+        with self.assertRaisesRegex(ValueError, "use --graph"):
+            taxontoy._parse_graphs(["nope=somewhere"])
+        with tempfile.TemporaryDirectory() as tmp:
+            array = Path(tmp) / "array.json"
+            array.write_text("[]\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "edges array"):
+                taxontoy._parse_graphs([f"audit={array}"])
+            table_path = write_json(tmp, "table.json", minimal_table())
+            graph_args = self._write_graphs(tmp, fixture_graphs())
+            with mock.patch.object(taxontoy, "_relation_name", side_effect=TypeError("boom")):
+                with self.assertRaises(TypeError):
+                    taxontoy.main(["candidates", str(table_path), "--json", *graph_args])
+
+        # 3.13+ specializes any/all. The other side is the plain call.
+        real_any, real_all = any, all
+        taxontoy.any = lambda items: real_any(items)
+        taxontoy.all = lambda items: real_all(items)
+        try:
+            taxontoy.property_candidates(minimal_table(), {
+                "loop": [{"source": "a", "target": "a"}],
+            }, {})
+            self.assertTrue(taxontoy._symmetric([
+                {"source": "a", "target": "b"},
+                {"source": "b", "target": "a"},
+            ]))
+            self.assertTrue(taxontoy._forward_conflict([
+                {"source": "a", "target": "b"},
+                {"source": "b", "target": "a"},
+            ]))
+            taxontoy.cover_waves(minimal_table(), graphs, knowledgegraph)
+        finally:
+            del taxontoy.any
+            del taxontoy.all
+
     def test_holds_is_false_when_classified_and_excluded_overlap(self):
         table = minimal_table()
         table["excluded"]["audit"] = sorted([*table["excluded"]["audit"], "dependsOn"])
@@ -1244,13 +1356,500 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
 
 
+def _alias(detection, relations):
+    return {"detection": detection, "folded": False, "relations": relations}
+
+
+def ranking_edges():
+    return [
+        {"source": "a", "relation": "dependsOn", "target": "b"},
+        {"source": "a", "relation": "depends_on", "target": "b"},
+        {"source": "b", "relation": "blocks", "target": "a"},
+        {"source": "a", "relation": "DependsOn", "target": "b"},
+        {"source": "a", "relation": "duplicates", "target": "c"},
+        {"source": "a", "relation": "overlapsWith", "target": "c"},
+        {"source": "p", "kind": "zeta", "target": "q"},
+        {"source": "p", "kind": "zeta", "target": "r"},
+        {"kind": "zeta", "source": "p", "target": None},
+        {"source": "m", "kind": "alpha", "target": "n"},
+        {"relation": "alpha", "source": None, "target": "n"},
+        {"relation": "alpha", "source": "m", "target": None},
+        {"kind": "narrower", "source": "parent", "target": "child"},
+        {"relation": "observes", "source": "x", "target": "y"},
+        {"kind": "kindWins", "relation": "relationLoses", "source": "s", "target": "t"},
+        {"kind": "  nope", "relation": "hidden", "source": "a", "target": "b"},
+        {"relation": " padded", "source": "a", "target": "b"},
+        {"source": "a", "target": "b"},
+        ["not", "edge"],
+        {"kind": "", "source": "a", "target": "b"},
+        {"relation": None, "source": "a", "target": "b"},
+    ]
+
+
+def expected_audit_ranking():
+    return [
+        {
+            "alias_candidates": [], "edges": 3, "elsewhere": None, "folded": False,
+            "rank": 1, "relation": "alpha", "status": "unclassified",
+        },
+        {
+            "alias_candidates": [], "edges": 3, "elsewhere": None, "folded": False,
+            "rank": 2, "relation": "zeta", "status": "unclassified",
+        },
+        {
+            "alias_candidates": [
+                _alias("case", ["DependsOn", "dependsOn"]),
+                _alias("inverse-pair", ["DependsOn", "blocks"]),
+                _alias("separator", ["DependsOn", "dependsOn", "depends_on"]),
+            ],
+            "edges": 1, "elsewhere": None, "folded": False,
+            "rank": 3, "relation": "DependsOn", "status": "unclassified",
+        },
+        {
+            "alias_candidates": [
+                _alias("inverse-pair", ["DependsOn", "blocks"]),
+                _alias("inverse-pair", ["blocks", "dependsOn"]),
+                _alias("inverse-pair", ["blocks", "depends_on"]),
+            ],
+            "edges": 1, "elsewhere": None, "folded": False,
+            "rank": 4, "relation": "blocks", "status": "excluded",
+        },
+        {
+            "alias_candidates": [
+                _alias("inverse-pair", ["blocks", "depends_on"]),
+                _alias("separator", ["DependsOn", "dependsOn", "depends_on"]),
+            ],
+            "edges": 1, "elsewhere": None, "folded": False,
+            "rank": 5, "relation": "depends_on", "status": "excluded",
+        },
+        {
+            "alias_candidates": [], "edges": 1, "elsewhere": None, "folded": False,
+            "rank": 6, "relation": "kindWins", "status": "unclassified",
+        },
+        {
+            "alias_candidates": [], "edges": 1, "elsewhere": "concepts", "folded": False,
+            "rank": 7, "relation": "narrower", "status": "unclassified",
+        },
+        {
+            "alias_candidates": [], "edges": 1, "elsewhere": None, "folded": False,
+            "rank": 8, "relation": "observes", "status": "excluded",
+        },
+        {
+            "alias_candidates": [], "edges": 1, "elsewhere": None, "folded": False,
+            "rank": 9, "relation": "overlapsWith", "status": "excluded",
+        },
+    ]
+
+
+class RankUnclassifiedTests(unittest.TestCase):
+    def test_names_are_ranked_without_folding_and_nameless_edges_stay(self):
+        found = taxontoy.rank_unclassified(minimal_table(), ranking_edges(), "audit")
+        self.assertEqual(found["counts"], {
+            "classified": 2, "edges": 21, "nameless": 6, "unclassified": 13,
+        })
+        self.assertEqual(found["nameless"], {"edges": 6})
+        self.assertEqual(
+            found["counts"]["classified"] + found["counts"]["unclassified"] + found["counts"]["nameless"],
+            len(ranking_edges()),
+        )
+        self.assertEqual(found["ranking"], expected_audit_ranking())
+        self.assertEqual(
+            [row["relation"] for row in found["ranking"]],
+            ["alpha", "zeta", "DependsOn", "blocks", "depends_on", "kindWins", "narrower", "observes", "overlapsWith"],
+        )
+        depends_on = next(row for row in found["ranking"] if row["relation"] == "depends_on")
+        self.assertEqual(depends_on["edges"], 1)
+        self.assertFalse(depends_on["folded"])
+        self.assertNotIn("relationLoses", [row["relation"] for row in found["ranking"]])
+        self.assertNotIn("hidden", [row["relation"] for row in found["ranking"]])
+        self.assertTrue(all(row["folded"] is False for row in found["ranking"]))
+        self.assertTrue(all(alias["folded"] is False for row in found["ranking"] for alias in row["alias_candidates"]))
+
+    def test_another_profile_does_not_reuse_this_profile_status(self):
+        found = taxontoy.rank_unclassified(minimal_table(), ranking_edges(), "concepts")
+        self.assertEqual(found["counts"], {
+            "classified": 1, "edges": 21, "nameless": 6, "unclassified": 14,
+        })
+        relations = {row["relation"]: row for row in found["ranking"]}
+        self.assertNotIn("narrower", relations)
+        self.assertEqual(relations["dependsOn"]["status"], "unclassified")
+        self.assertEqual(relations["dependsOn"]["elsewhere"], "audit")
+        self.assertEqual(relations["dependsOn"]["edges"], 1)
+        self.assertEqual(relations["duplicates"]["elsewhere"], "audit")
+        self.assertEqual(relations["blocks"]["status"], "unclassified")
+        self.assertIsNone(relations["blocks"]["elsewhere"])
+        self.assertEqual(sum(row["edges"] for row in found["ranking"]), 14)
+
+    def test_unknown_profile_and_empty_graph(self):
+        with self.assertRaisesRegex(ValueError, "unknown profile"):
+            taxontoy.rank_unclassified(minimal_table(), [], "nope")
+        found = taxontoy.rank_unclassified(
+            minimal_table(),
+            [{"source": "a", "relation": "dependsOn", "target": "b"}],
+            "audit",
+        )
+        self.assertEqual(found["ranking"], [])
+        self.assertEqual(found["counts"], {
+            "classified": 1, "edges": 1, "nameless": 0, "unclassified": 0,
+        })
+        self.assertEqual(found["nameless"], {"edges": 0})
+
+    def test_cli_json_is_deterministic_and_records_provenance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            table = write_json(tmp, "table.json", minimal_table())
+            graph = write_json(tmp, "graph.json", {"edges": ranking_edges()})
+            args = ["rank-unclassified", str(graph), str(table), "--profile", "audit"]
+            first = run([*args, "--format", "json"])
+            second = run([*args, "--json"])
+            expected_inputs = sorted([
+                {"path": str(graph), "sha256": hashlib.sha256(graph.read_bytes()).hexdigest()},
+                {"path": str(table), "sha256": hashlib.sha256(table.read_bytes()).hexdigest()},
+            ], key=lambda item: item["path"])
+        self.assertEqual(first.returncode, 0, first.stderr + first.stdout)
+        self.assertEqual(first.stdout, second.stdout)
+        payload = json.loads(first.stdout)
+        self.assertEqual(
+            first.stdout,
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+        self.assertEqual(payload["command"], "rank-unclassified")
+        self.assertEqual(payload["tool"], "taxontoy")
+        self.assertEqual(payload["version"], taxontoy.__version__)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["errors"], [])
+        self.assertEqual(payload["profile"], "audit")
+        self.assertEqual(payload["ranking"], expected_audit_ranking())
+        self.assertEqual(payload["inputs"], expected_inputs)
+
+    def test_cli_text_lists_aliases_elsewhere_and_the_nameless_bucket(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            table = write_json(tmp, "table.json", minimal_table())
+            graph = write_json(tmp, "graph.json", {"edges": ranking_edges()})
+            result = run([
+                "rank-unclassified", str(graph), str(table), "--profile", "audit", "--format", "text",
+            ])
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("command rank-unclassified", result.stdout)
+        self.assertIn("profile audit", result.stdout)
+        self.assertIn("edges 21 classified 2 unclassified 13 nameless 6", result.stdout)
+        self.assertIn("rank 1 alpha edges 3 status unclassified", result.stdout)
+        self.assertIn("rank 2 zeta edges 3 status unclassified", result.stdout)
+        self.assertIn("alias separator DependsOn dependsOn depends_on", result.stdout)
+        self.assertIn("alias inverse-pair blocks depends_on", result.stdout)
+        self.assertIn("rank 7 narrower edges 1 status unclassified elsewhere concepts", result.stdout)
+        self.assertIn("nameless 6", result.stdout)
+        self.assertNotIn("relationLoses", result.stdout)
+        self.assertNotIn("hidden", result.stdout)
+
+    def test_empty_ranking_text_still_reports_the_nameless_bucket(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            table = write_json(tmp, "table.json", minimal_table())
+            graph = write_json(tmp, "graph.json", {"edges": [
+                {"source": "a", "relation": "dependsOn", "target": "b"},
+            ]})
+            result = run([
+                "rank-unclassified", str(graph), str(table), "--profile", "audit", "--format", "text",
+            ])
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("edges 1 classified 1 unclassified 0 nameless 0", result.stdout)
+        self.assertIn("nameless 0", result.stdout)
+        self.assertNotIn("rank ", result.stdout)
+
+    def test_output_path_is_the_only_new_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            table = write_json(tmp, "table.json", minimal_table())
+            graph = write_json(tmp, "graph.json", {"edges": ranking_edges()})
+            args = ["rank-unclassified", str(graph), str(table), "--profile", "audit", "--json"]
+            before = set(tmp.iterdir())
+            quiet = run(args, cwd=tmp)
+            self.assertEqual(quiet.returncode, 0, quiet.stderr + quiet.stdout)
+            self.assertEqual(set(tmp.iterdir()), before)
+            out = tmp / "ranking.json"
+            written = run([*args, "--output", str(out)], cwd=tmp)
+            self.assertEqual(written.returncode, 0)
+            self.assertEqual(written.stdout, "")
+            self.assertEqual(set(tmp.iterdir()), before | {out})
+            self.assertEqual(json.loads(out.read_text(encoding="utf-8"))["profile"], "audit")
+
+    def test_table_can_come_from_the_environment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            table = write_json(tmp, "table.json", minimal_table())
+            graph = write_json(tmp, "graph.json", {"edges": ranking_edges()})
+            env = os.environ.copy()
+            env["TAXONTOY_TABLE"] = f"  {table}  "
+            result = run([
+                "rank-unclassified", f"  {graph}  ", "--profile", "concepts", "--format", "json",
+            ], env=env)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["profile"], "concepts")
+        self.assertEqual(payload["counts"]["classified"], 1)
+        self.assertEqual(payload["inputs"][0]["path"], str(graph))
+
+    def test_bad_inputs_fail_without_writing(self):
+        env = os.environ.copy()
+        env.pop("TAXONTOY_TABLE", None)
+        with tempfile.TemporaryDirectory() as tmp:
+            graph = write_json(tmp, "graph.json", {"edges": []})
+            missing_table = run(["rank-unclassified", str(graph), "--profile", "audit"], env=env)
+            self.assertEqual(missing_table.returncode, 1)
+            self.assertIn("pass the table path or set TAXONTOY_TABLE", missing_table.stderr)
+
+            table = write_json(tmp, "table.json", minimal_table())
+            blank = run(["rank-unclassified", "   ", str(table), "--profile", "audit"], env=env)
+            self.assertEqual(blank.returncode, 1)
+            self.assertIn("pass the graph path", blank.stderr)
+
+            missing_graph = run(["rank-unclassified", str(Path(tmp) / "absent.json"), str(table), "--profile", "audit"], env=env)
+            self.assertEqual(missing_graph.returncode, 1)
+            self.assertIn("taxontoy:", missing_graph.stderr)
+
+            for payload, message in (
+                ([], "graph JSON must be an object with an edges array"),
+                ({"nodes": []}, "graph JSON must be an object with an edges array"),
+                ({"edges": "nope"}, "graph JSON must be an object with an edges array"),
+            ):
+                path = write_json(tmp, "bad-graph.json", payload)
+                result = run(["rank-unclassified", str(path), str(table), "--profile", "audit"], env=env)
+                self.assertEqual(result.returncode, 1, payload)
+                self.assertIn(message, result.stderr)
+
+            array = Path(tmp) / "array.json"
+            array.write_text("[]\n", encoding="utf-8")
+            invalid = run([
+                "rank-unclassified", str(Path(tmp) / "absent.json"), str(array), "--profile", "audit", "--json",
+            ], env=env)
+            self.assertEqual(invalid.returncode, 1)
+            body = json.loads(invalid.stdout)
+            self.assertEqual(body["command"], "rank-unclassified")
+            self.assertFalse(body["ok"])
+            self.assertIn("table must be a JSON object", body["errors"])
+            self.assertNotIn("ranking", body)
+
+            conflict = run([
+                "rank-unclassified", str(graph), str(table), "--profile", "audit", "--json", "--format", "text",
+            ], env=env)
+            self.assertEqual(conflict.returncode, 1)
+            self.assertIn("disagree", conflict.stderr)
+
+        usage = run(["rank-unclassified", "--profile", "nope"])
+        self.assertEqual(usage.returncode, 2)
+
+
+class CommittedRankingTests(unittest.TestCase):
+    def _report(self, profile):
+        path = ROOT / f"ranking-{profile}.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            path.read_text(encoding="utf-8"),
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+        self.assertEqual(payload["command"], "rank-unclassified")
+        self.assertEqual(payload["version"], taxontoy.__version__)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["errors"], [])
+        self.assertEqual(payload["profile"], profile)
+        coverage = json.loads((ROOT / "coverage.json").read_text(encoding="utf-8"))
+        graph = f"build/{profile}.json"
+        self.assertEqual(
+            next(item for item in payload["inputs"] if item["path"] == graph),
+            next(item for item in coverage["inputs"] if item["path"] == graph),
+        )
+        counts = payload["counts"]
+        self.assertEqual(
+            counts["classified"] + counts["unclassified"] + counts["nameless"],
+            counts["edges"],
+        )
+        self.assertEqual(sum(row["edges"] for row in payload["ranking"]), counts["unclassified"])
+        self.assertEqual(payload["nameless"]["edges"], counts["nameless"])
+        self.assertTrue(all(row["folded"] is False for row in payload["ranking"]))
+        self.assertTrue(all(
+            alias["folded"] is False and alias["detection"] in {"case", "inverse-pair", "separator"}
+            for row in payload["ranking"] for alias in row["alias_candidates"]
+        ))
+        return payload
+
+    def test_real_graphs_rank_excluded_names_and_keep_a_nameless_bucket(self):
+        audit = self._report("audit")
+        self.assertEqual(audit["counts"], {
+            "classified": 38, "edges": 2342, "nameless": 0, "unclassified": 2304,
+        })
+        self.assertEqual(
+            [(row["rank"], row["relation"], row["edges"]) for row in audit["ranking"][:10]],
+            [
+                (1, "belongsTo", 691),
+                (2, "changesFile", 564),
+                (3, "updates", 564),
+                (4, "hasRun", 209),
+                (5, "runsAt", 93),
+                (6, "overlapsWith", 25),
+                (7, "derived_from", 14),
+                (8, "hasBase", 14),
+                (9, "hasHead", 14),
+                (10, "hasMain", 14),
+            ],
+        )
+        self.assertTrue(all(row["status"] == "excluded" and row["elsewhere"] is None for row in audit["ranking"]))
+        depends_on = next(row for row in audit["ranking"] if row["relation"] == "depends_on")
+        self.assertEqual(depends_on["edges"], 13)
+        self.assertIn(
+            _alias("separator", ["dependsOn", "depends_on"]),
+            depends_on["alias_candidates"],
+        )
+        self.assertIn(
+            _alias("inverse-pair", ["blocks", "depends_on"]),
+            depends_on["alias_candidates"],
+        )
+
+        concepts = self._report("concepts")
+        self.assertEqual(concepts["counts"], {
+            "classified": 91, "edges": 826, "nameless": 0, "unclassified": 735,
+        })
+        self.assertEqual(
+            [(row["relation"], row["edges"]) for row in concepts["ranking"]],
+            [
+                ("hasElement", 408),
+                ("genusElement", 114),
+                ("hasName", 84),
+                ("derived_from", 43),
+                ("differentiaElement", 43),
+                ("observes", 43),
+            ],
+        )
+
+        cases = self._report("cases")
+        self.assertEqual(cases["counts"], {
+            "classified": 10, "edges": 10, "nameless": 0, "unclassified": 0,
+        })
+        self.assertEqual(cases["ranking"], [])
+
+
+class MutationTests(unittest.TestCase):
+    def test_rank_mutations_of_the_real_source_are_killed(self):
+        source = (ROOT / "taxontoy.py").read_text(encoding="utf-8")
+        mutations = [
+            ('(-row["edges"], row["relation"])', '(row["edges"], row["relation"])'),
+            ('(-row["edges"], row["relation"])', '(-row["edges"], row["relation"][::-1])'),
+            ("enumerate(ranking, start=1)", "enumerate(ranking, start=0)"),
+            (
+                '"excluded" if name in excluded else "unclassified"',
+                '"unclassified" if name in excluded else "excluded"',
+            ),
+            (
+                '"folded": False,\n            "relation": name,',
+                '"folded": True,\n            "relation": name,',
+            ),
+            ("nameless += 1", "nameless += 0"),
+            (
+                'if item["detection"] in _ALIAS_DETECTIONS',
+                'if item["detection"] == "case"',
+            ),
+            (
+                '_ALIAS_DETECTIONS = ("case", "inverse-pair", "separator")',
+                '_ALIAS_DETECTIONS = ("case", "inverse-pair", "same-pairs", "separator")',
+            ),
+            (
+                'related = [dict(item) for item in aliases if name in item["relations"]]',
+                "related = []",
+            ),
+            (
+                '"elsewhere": _elsewhere(table, profile, name),',
+                '"elsewhere": None,',
+            ),
+            (
+                '"edges": classified + unclassified + nameless,',
+                '"edges": classified + unclassified,',
+            ),
+            (
+                '"edges": len(items),',
+                '"edges": len(items) + len(related),',
+            ),
+            ("if profile not in WAVES:", "if False and profile not in WAVES:"),
+            ("            return wave\n", "            return None\n"),
+            (
+                "if name in classified_names:\n            continue",
+                "if False and name in classified_names:\n            continue",
+            ),
+            (
+                'if not _name_ok(name):\n        return None\n    return name',
+                'if not _name_ok(name):\n        return None\n    return name.casefold()',
+            ),
+            ("if not graph_path:", "if graph_path:"),
+            (
+                'f"nameless {payload[\'nameless\'][\'edges\']}"',
+                '"nameless 0"',
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            table_path = write_json(tmp, "table.json", minimal_table())
+            graph_path = write_json(tmp, "graph.json", {"edges": ranking_edges()})
+            golden = _ranking_snapshot(taxontoy, graph_path, table_path)
+            killed = []
+            survived = []
+            for old, new in mutations:
+                self.assertEqual(source.count(old), 1, old)
+                mutated = source.replace(old, new, 1)
+                try:
+                    module = _load_mutant(mutated)
+                    found = _ranking_snapshot(module, graph_path, table_path)
+                except Exception:
+                    killed.append(old)
+                    continue
+                if found != golden:
+                    killed.append(old)
+                else:
+                    survived.append(old)
+        sys.stderr.write(f"mutation killed={len(killed)} survived={len(survived)}\n")
+        self.assertEqual(survived, [], survived)
+
+
+def _ranking_snapshot(module, graph_path, table_path):
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+
+    table = json.loads(Path(table_path).read_text(encoding="utf-8"))
+    edges = json.loads(Path(graph_path).read_text(encoding="utf-8"))["edges"]
+    try:
+        module.rank_unclassified(table, edges, "nope")
+        bad = None
+    except ValueError as exc:
+        bad = str(exc)
+    buffer = io.StringIO()
+    with redirect_stdout(buffer), redirect_stderr(io.StringIO()):
+        code = module.main([
+            "rank-unclassified", str(graph_path), str(table_path), "--profile", "audit", "--format", "text",
+        ])
+    return {
+        "audit": module.rank_unclassified(table, edges, "audit"),
+        "bad": bad,
+        "code": code,
+        "concepts": module.rank_unclassified(table, edges, "concepts"),
+        "text": buffer.getvalue(),
+    }
+
+
+def _load_mutant(text):
+    import importlib.util
+
+    directory = Path(tempfile.mkdtemp(prefix="taxontoy-mutant-"))
+    path = directory / "mutant_rank.py"
+    path.write_text(text, encoding="utf-8")
+    spec = importlib.util.spec_from_file_location(f"mutant_rank_{directory.name}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class ZLineCoverageTests(unittest.TestCase):
     def test_executed_excluded_and_unexecuted_partition_the_file(self):
-        child = set()
+        child_lines = set()
+        child_arcs = set()
         for path in _COVER_DIR.iterdir():
-            text = path.read_text(encoding="utf-8")
-            child.update(int(line) for line in text.split() if line)
-        self.assertTrue(child, "CLI subprocesses did not record executed lines")
+            lines, arcs = branchcov.load(path.read_text(encoding="utf-8"))
+            child_lines.update(lines)
+            child_arcs.update(arcs)
+        self.assertTrue(child_lines, "CLI subprocesses did not record executed lines")
         source_path = ROOT / "taxontoy.py"
         source = source_path.read_text(encoding="utf-8")
         total = len(source.splitlines())
@@ -1266,21 +1865,44 @@ class ZLineCoverageTests(unittest.TestCase):
                     walk(const)
 
         walk(code)
-        seen = set(_SEEN) | child
+        seen = branchcov.seen_lines() | child_lines
         executed = executable & seen
         excluded = set(range(1, total + 1)) - executable
         unexecuted = executable - seen
         self.assertEqual(len(executed) + len(excluded) + len(unexecuted), total)
         sys.stderr.write(
-            f"line coverage executed={len(executed)} excluded={len(excluded)} "
+            f"statement coverage executed={len(executed)} excluded={len(excluded)} "
             f"unexecuted={len(unexecuted)} total={total}\n"
         )
         if unexecuted:
             lines = source.splitlines()
             preview = "\n".join(f"{number}: {lines[number - 1]}" for number in sorted(unexecuted))
-            self.fail(f"unexecuted {len(unexecuted)}\n{preview}")
+            self.fail(f"unexecuted statements {len(unexecuted)}\n{preview}")
         guard = next(number for number, line in enumerate(source.splitlines(), start=1) if line.startswith("if __name__"))
-        self.assertIn(guard, child)
+        self.assertIn(guard, child_lines)
+
+        static = branchcov.static_branches(source_path)
+        observed = branchcov.seen_arcs() | child_arcs
+        branch_total = sum(len(arcs) for arcs in static.values())
+        branch_executed = 0
+        branch_unexecuted = []
+        for key, arcs in static.items():
+            for src, dst in arcs:
+                if (key, src, dst) in observed:
+                    branch_executed += 1
+                else:
+                    branch_unexecuted.append((key, src, dst))
+        branch_excluded = 0
+        self.assertEqual(branch_executed + branch_excluded + len(branch_unexecuted), branch_total)
+        sys.stderr.write(
+            f"branch coverage executed={branch_executed} excluded={branch_excluded} "
+            f"unexecuted={len(branch_unexecuted)} total={branch_total}\n"
+        )
+        if branch_unexecuted:
+            preview = "\n".join(
+                branchcov.explain(source_path, key, src, dst) for key, src, dst in branch_unexecuted
+            )
+            self.fail(f"unexecuted branches {len(branch_unexecuted)}\n{preview}")
 
 
 if __name__ == "__main__":
