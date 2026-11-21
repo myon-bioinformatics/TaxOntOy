@@ -1982,12 +1982,12 @@ class RepoRelationTests(unittest.TestCase):
                 "path": "child-heads.json",
                 "repo": "myon-bioinformatics/Aoi",
             },
-            "source": "myon-bioinformatics/Aoi",
-            "target": "myon-bioinformatics/BlueProbe",
+            "source": "myon-bioinformatics/aoi",
+            "target": "myon-bioinformatics/blueprobe",
         }, edges)
         self.assertTrue(any(
             edge["kind"] == "vendor"
-            and edge["source"] == "myon-bioinformatics/Aoi"
+            and edge["source"] == "myon-bioinformatics/aoi"
             and edge["target"] == "myon-bioinformatics/markdown"
             and edge["path"] == "vendor/markdown.py"
             and edge["provenance"]["path"] == "vendor.lock.json"
@@ -1995,7 +1995,7 @@ class RepoRelationTests(unittest.TestCase):
         ))
         self.assertTrue(any(
             edge["kind"] == "vendor"
-            and edge["source"] == "myon-bioinformatics/BlueProbe"
+            and edge["source"] == "myon-bioinformatics/blueprobe"
             and edge["provenance"]["path"] == "blueprobe/vendor.lock.json"
             for edge in edges
         ))
@@ -2008,8 +2008,8 @@ class RepoRelationTests(unittest.TestCase):
         ))
         self.assertTrue(any(
             edge["kind"] == "consumes"
-            and edge["source"] == "myon-bioinformatics/QueRyu"
-            and edge["target"] == "myon-bioinformatics/BlueProbe"
+            and edge["source"] == "myon-bioinformatics/queryu"
+            and edge["target"] == "myon-bioinformatics/blueprobe"
             and edge["origin"] == "blueprobe"
             for edge in edges
         ))
@@ -2028,7 +2028,7 @@ class RepoRelationTests(unittest.TestCase):
         self.assertIn(f"nodes {len(graph['nodes'])}", graph_text.stdout)
         self.assertIn(f"edges {len(edges)}", graph_text.stdout)
         self.assertIn(
-            "edge subtree myon-bioinformatics/Aoi myon-bioinformatics/BlueProbe path blueprobe",
+            "edge subtree myon-bioinformatics/aoi myon-bioinformatics/blueprobe path blueprobe",
             graph_text.stdout,
         )
         self.assertIn("mapping subtree-of subtree", graph_text.stdout)
@@ -2460,6 +2460,14 @@ class ReviewFixTests(unittest.TestCase):
             with self.assertRaises(ValueError) as directory:
                 taxontoy._manifest_rows(str(manifest))
             self.assertIn("stay under the manifest directory", str(directory.exception))
+            (mdir / "real.json").write_text("{}\n", encoding="utf-8")
+            (mdir / "link.json").symlink_to("real.json")
+            manifest = _write_manifest(mdir, [
+                _source("ext/hub", _SHA_A, "child-heads.json", "heads", "link.json"),
+            ])
+            with self.assertRaises(ValueError) as inside:
+                taxontoy._manifest_rows(str(manifest))
+            self.assertIn("stay under the manifest directory", str(inside.exception))
 
     def test_paths_and_repository_names_compare_after_normalization(self):
         table = {
@@ -2577,6 +2585,87 @@ class ReviewFixTests(unittest.TestCase):
             [row["path"] for row in counted["pairs"]],
             ["a", "z"],
         )
+
+    def test_one_repository_is_one_node_and_the_remaining_checks_hold(self):
+        sha = "a" * 40
+        rows = [
+            {
+                "commit": sha, "path": "child-heads.json", "repo": "MyOrg/Aoi", "role": "heads",
+                "text": json.dumps({"heads": {
+                    "MyOrg/Aoi": {"optional": {"subtree_prefix": "child"}},
+                    "MyOrg/Kid": {"optional": {"subtree_prefix": "kid"}},
+                }}),
+            },
+            {
+                "commit": sha, "path": "vendor.lock.json", "repo": "MyOrg/Aoi", "role": "lock",
+                "text": json.dumps({"schema": "vendor-lock/1", "files": [{
+                    "repository": "https://github.com/MyOrg/Lib.git",
+                    "source": "a.py",
+                    "destination": "vendor/a.py",
+                }]}),
+            },
+            {
+                "commit": sha, "path": "aoi.py", "repo": "MyOrg/Aoi", "role": "siblings",
+                "text": "SIBLINGS = {'child': ('kid',)}\n",
+            },
+            {
+                "commit": sha, "path": ".github/workflows/ci.yml", "repo": "MyOrg/Aoi", "role": "workflow",
+                "text": "- uses: actions/checkout@" + sha + "\n",
+            },
+        ]
+        graph = taxontoy.build_repo_graph(rows)
+        self.assertEqual(
+            [node["id"] for node in graph["nodes"]],
+            ["actions/checkout", "myorg/aoi", "myorg/kid", "myorg/lib"],
+        )
+        self.assertEqual(
+            {(edge["kind"], edge["source"], edge["target"]) for edge in graph["edges"]},
+            {
+                ("subtree", "myorg/aoi", "myorg/aoi"),
+                ("subtree", "myorg/aoi", "myorg/kid"),
+                ("vendor", "myorg/aoi", "myorg/lib"),
+                ("consumes", "myorg/aoi", "myorg/kid"),
+                ("workflow-pin", "myorg/aoi", "actions/checkout"),
+            },
+        )
+        self.assertEqual(
+            [item["repo"] for item in graph["provenance"]],
+            ["MyOrg/Aoi", "MyOrg/Aoi", "MyOrg/Aoi", "MyOrg/Aoi"],
+        )
+        reversed_rows = [
+            {"commit": sha, "path": "z.yml", "repo": "z/repo", "role": "workflow", "text": ""},
+            {"commit": sha, "path": "a.yml", "repo": "a/repo", "role": "workflow", "text": ""},
+        ]
+        self.assertEqual(
+            [(item["repo"], item["path"]) for item in taxontoy.build_repo_graph(reversed_rows)["provenance"]],
+            [("a/repo", "a.yml"), ("z/repo", "z.yml")],
+        )
+        self.assertEqual(taxontoy._repo_key("up/lib/extra"), "up/lib/extra")
+        self.assertEqual(
+            taxontoy._workflow_pins(
+                "- uses: actions/checkout@" + sha + "\n  repository: up/lib/extra\n  ref: " + ("b" * 40) + "\n"
+            ),
+            [("actions/checkout", sha)],
+        )
+        table = {"properties": {"relations": {"subtree": {"disjoint_with": [
+            {"relation": "vendor", "since": "2026-11-21", "reason": "pair"},
+        ]}}}}
+        one_path, _skipped = taxontoy.property_violations(table, [
+            {"kind": "subtree", "source": "hub", "target": "c", "path": "pkg"},
+            {"kind": "vendor", "source": "hub", "target": "c"},
+        ])
+        same, _skipped = taxontoy.property_violations(table, [
+            {"kind": "subtree", "source": "hub", "target": "c"},
+            {"kind": "vendor", "source": "hub", "target": "c"},
+        ])
+        different, _skipped = taxontoy.property_violations(table, [
+            {"kind": "subtree", "source": "hub", "target": "c"},
+            {"kind": "vendor", "source": "hub", "target": "other"},
+        ])
+        self.assertEqual(one_path, [])
+        self.assertEqual(len(same), 1)
+        self.assertEqual(same[0]["pair"], {"source": "hub", "target": "c"})
+        self.assertEqual(different, [])
 
 
 class RepoBranchTests(unittest.TestCase):
@@ -2794,6 +2883,30 @@ class RepoMutationTests(unittest.TestCase):
                 "pairs.sort(key=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))",
                 "pairs = list(pairs)",
             ),
+            (
+                '    provenance.sort(key=lambda item: (item["repo"], item["path"], item["role"]))',
+                "    provenance = list(provenance)",
+            ),
+            (
+                "        if candidate.is_symlink():",
+                "        if False:",
+            ),
+            (
+                "    return _github_repo(value, exact=True) or value.casefold()",
+                "    return _github_repo(value) or value.casefold()",
+            ),
+            (
+                "        canon = _github_repo(repository, exact=True) if repository and ref else None",
+                "        canon = _github_repo(repository) if repository and ref else None",
+            ),
+            (
+                '    if "path" in left or "path" in right:',
+                '    if "path" in left and "path" in right:',
+            ),
+            (
+                '        and _repo_key(left.get("target")) == _repo_key(right.get("target"))',
+                '        and _repo_key(left.get("target")) != _repo_key(right.get("target"))',
+            ),
         ]
         manifest = ROOT / "fixtures" / "repos" / "manifest.json"
         table = ROOT / "otl-relations.json"
@@ -2880,6 +2993,17 @@ def _repo_snapshot(module, manifest, table, graph):
             module._graph_from_manifest(str(mdir / "manifest.json"))
         except ValueError as exc:
             escape = "stay" if "stay under" in str(exc) else str(exc)
+        (mdir / "real.json").write_text("{}\n", encoding="utf-8")
+        (mdir / "link.json").symlink_to("real.json")
+        (mdir / "manifest.json").write_text(json.dumps({"sources": [{
+            "commit": "a" * 40, "file": "link.json", "path": "child-heads.json",
+            "repo": "ext/hub", "role": "heads",
+        }]}), encoding="utf-8")
+        inside = "read"
+        try:
+            module._manifest_rows(str(mdir / "manifest.json"))
+        except ValueError as exc:
+            inside = "stay" if "stay under" in str(exc) else str(exc)
     ordered_hits, _skipped = module.property_violations(
         {"properties": {"relations": {"subtree": {"disjoint_with": [
             {"relation": "vendor", "since": "2026-11-21", "reason": "pair"},
@@ -2921,15 +3045,39 @@ def _repo_snapshot(module, manifest, table, graph):
         "pair_paths": [
             row["path"] for row in module._double_distribution(list(reversed(ordered_hits)))["pairs"]
         ],
+        "diff_ends": len(module.property_violations(catalog, [
+            {"kind": "subtree", "source": "hub", "target": "c"},
+            {"kind": "vendor", "source": "hub", "target": "other"},
+        ])[0]),
         "dotted": len(dotted),
         "double": module._double_distribution(violations),
+        "extra": module._repo_key("up/lib/extra"),
         "dup": module._double_distribution(violations + violations),
         "graph_ok": json.loads(graph_out.getvalue())["ok"],
         "holders": sorted({edge["source"] for edge in edges if edge["kind"] == "vendor"}),
+        "inside": inside,
         "local": local_edges,
         "missing": missing,
+        "one_path": len(module.property_violations(catalog, [
+            {"kind": "subtree", "source": "hub", "target": "c", "path": "pkg"},
+            {"kind": "vendor", "source": "hub", "target": "c"},
+        ])[0]),
         "norm": module._norm_path("./a/b"),
         "ordered": [item["relations"] for item in ordered],
+        "provenance": [
+            (item["repo"], item["path"])
+            for item in module.build_repo_graph([
+                {"commit": "a" * 40, "path": "z.yml", "repo": "z/repo", "role": "workflow", "text": ""},
+                {"commit": "a" * 40, "path": "a.yml", "repo": "a/repo", "role": "workflow", "text": ""},
+            ])["provenance"]
+        ],
+        "same_ends": len(module.property_violations(catalog, [
+            {"kind": "subtree", "source": "hub", "target": "c"},
+            {"kind": "vendor", "source": "hub", "target": "c"},
+        ])[0]),
+        "three": module._workflow_pins(
+            "- uses: actions/checkout@" + ("b" * 40) + "\n  repository: up/lib/extra\n  ref: " + ("c" * 40) + "\n"
+        ),
         "other_double": module._double_distribution([{
             "relations": ["narrower", "similarTo"],
             "pair": {"path": "pkg", "repository": "hub"},

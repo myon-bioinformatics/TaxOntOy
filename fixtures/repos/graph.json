@@ -9,8 +9,8 @@
         "path": "aoi.py",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/NagoyAction",
-      "target": "myon-bioinformatics/BlueProbe"
+      "source": "myon-bioinformatics/nagoyaction",
+      "target": "myon-bioinformatics/blueprobe"
     },
     {
       "kind": "consumes",
@@ -20,8 +20,8 @@
         "path": "aoi.py",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/QueRyu",
-      "target": "myon-bioinformatics/BlueProbe"
+      "source": "myon-bioinformatics/queryu",
+      "target": "myon-bioinformatics/blueprobe"
     },
     {
       "kind": "consumes",
@@ -31,8 +31,8 @@
         "path": "aoi.py",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/NagoyAction",
-      "target": "myon-bioinformatics/BlueProbe"
+      "source": "myon-bioinformatics/nagoyaction",
+      "target": "myon-bioinformatics/blueprobe"
     },
     {
       "kind": "consumes",
@@ -42,8 +42,8 @@
         "path": "aoi.py",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/QueRyu",
-      "target": "myon-bioinformatics/BlueProbe"
+      "source": "myon-bioinformatics/queryu",
+      "target": "myon-bioinformatics/blueprobe"
     },
     {
       "kind": "consumes",
@@ -53,8 +53,8 @@
         "path": "aoi.py",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/DRAgoWing",
-      "target": "myon-bioinformatics/PythDRagoras"
+      "source": "myon-bioinformatics/dragowing",
+      "target": "myon-bioinformatics/pythdragoras"
     },
     {
       "kind": "consumes",
@@ -64,8 +64,8 @@
         "path": "aoi.py",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/SakAnalytics",
-      "target": "myon-bioinformatics/PythDRagoras"
+      "source": "myon-bioinformatics/sakanalytics",
+      "target": "myon-bioinformatics/pythdragoras"
     },
     {
       "kind": "consumes",
@@ -75,8 +75,8 @@
         "path": "aoi.py",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/DRAgoWing",
-      "target": "myon-bioinformatics/PythDRagoras"
+      "source": "myon-bioinformatics/dragowing",
+      "target": "myon-bioinformatics/pythdragoras"
     },
     {
       "kind": "consumes",
@@ -86,8 +86,8 @@
         "path": "aoi.py",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/SakAnalytics",
-      "target": "myon-bioinformatics/PythDRagoras"
+      "source": "myon-bioinformatics/sakanalytics",
+      "target": "myon-bioinformatics/pythdragoras"
     },
     {
       "kind": "consumes",
@@ -97,8 +97,8 @@
         "path": "aoi.py",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/BlueProbe",
-      "target": "myon-bioinformatics/QueRyu"
+      "source": "myon-bioinformatics/blueprobe",
+      "target": "myon-bioinformatics/queryu"
     },
     {
       "kind": "consumes",
@@ -108,8 +108,8 @@
         "path": "aoi.py",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/NagoyAction",
-      "target": "myon-bioinformatics/QueRyu"
+      "source": "myon-bioinformatics/nagoyaction",
+      "target": "myon-bioinformatics/queryu"
     },
     {
       "kind": "consumes",
@@ -119,8 +119,8 @@
         "path": "aoi.py",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/DRAgoWing",
-      "target": "myon-bioinformatics/QueRyu"
+      "source": "myon-bioinformatics/dragowing",
+      "target": "myon-bioinformatics/queryu"
     },
     {
       "kind": "consumes",
@@ -130,8 +130,8 @@
         "path": "aoi.py",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/NagoyAction",
-      "target": "myon-bioinformatics/QueRyu"
+      "source": "myon-bioinformatics/nagoyaction",
+      "target": "myon-bioinformatics/queryu"
     },
     {
       "kind": "consumes",
@@ -141,8 +141,8 @@
         "path": "aoi.py",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/BlueProbe",
-      "target": "myon-bioinformatics/QueRyu"
+      "source": "myon-bioinformatics/blueprobe",
+      "target": "myon-bioinformatics/queryu"
     },
     {
       "kind": "consumes",
@@ -152,8 +152,8 @@
         "path": "aoi.py",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/PythDRagoras",
-      "target": "myon-bioinformatics/SakAnalytics"
+      "source": "myon-bioinformatics/pythdragoras",
+      "target": "myon-bioinformatics/sakanalytics"
     },
     {
       "kind": "consumes",
@@ -163,8 +163,8 @@
         "path": "aoi.py",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/NagoyAction",
-      "target": "myon-bioinformatics/SakAnalytics"
+      "source": "myon-bioinformatics/nagoyaction",
+      "target": "myon-bioinformatics/sakanalytics"
     },
     {
       "kind": "consumes",
@@ -174,8 +174,8 @@
         "path": "aoi.py",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/PythDRagoras",
-      "target": "myon-bioinformatics/SakAnalytics"
+      "source": "myon-bioinformatics/pythdragoras",
+      "target": "myon-bioinformatics/sakanalytics"
     },
     {
       "kind": "subtree",
@@ -185,8 +185,8 @@
         "path": "child-heads.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
-      "target": "myon-bioinformatics/BlueProbe"
+      "source": "myon-bioinformatics/aoi",
+      "target": "myon-bioinformatics/blueprobe"
     },
     {
       "kind": "subtree",
@@ -196,8 +196,8 @@
         "path": "child-heads.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
-      "target": "myon-bioinformatics/DRAgoWing"
+      "source": "myon-bioinformatics/aoi",
+      "target": "myon-bioinformatics/dragowing"
     },
     {
       "kind": "subtree",
@@ -207,8 +207,8 @@
         "path": "child-heads.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
-      "target": "myon-bioinformatics/NagoyAction"
+      "source": "myon-bioinformatics/aoi",
+      "target": "myon-bioinformatics/nagoyaction"
     },
     {
       "kind": "subtree",
@@ -218,8 +218,8 @@
         "path": "child-heads.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
-      "target": "myon-bioinformatics/PythDRagoras"
+      "source": "myon-bioinformatics/aoi",
+      "target": "myon-bioinformatics/pythdragoras"
     },
     {
       "kind": "subtree",
@@ -229,8 +229,8 @@
         "path": "child-heads.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
-      "target": "myon-bioinformatics/QueRyu"
+      "source": "myon-bioinformatics/aoi",
+      "target": "myon-bioinformatics/queryu"
     },
     {
       "kind": "subtree",
@@ -240,8 +240,8 @@
         "path": "child-heads.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
-      "target": "myon-bioinformatics/SakAnalytics"
+      "source": "myon-bioinformatics/aoi",
+      "target": "myon-bioinformatics/sakanalytics"
     },
     {
       "kind": "vendor",
@@ -253,8 +253,8 @@
         "path": "nagoyaction/vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/NagoyAction",
-      "target": "myon-bioinformatics/Aoi"
+      "source": "myon-bioinformatics/nagoyaction",
+      "target": "myon-bioinformatics/aoi"
     },
     {
       "kind": "vendor",
@@ -266,7 +266,7 @@
         "path": "vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
+      "source": "myon-bioinformatics/aoi",
       "target": "myon-bioinformatics/markdown"
     },
     {
@@ -279,7 +279,7 @@
         "path": "blueprobe/vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/BlueProbe",
+      "source": "myon-bioinformatics/blueprobe",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -292,7 +292,7 @@
         "path": "dragowing/vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/DRAgoWing",
+      "source": "myon-bioinformatics/dragowing",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -305,7 +305,7 @@
         "path": "nagoyaction/vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/NagoyAction",
+      "source": "myon-bioinformatics/nagoyaction",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -318,7 +318,7 @@
         "path": "pythdragoras/vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/PythDRagoras",
+      "source": "myon-bioinformatics/pythdragoras",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -331,7 +331,7 @@
         "path": "queryu/vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/QueRyu",
+      "source": "myon-bioinformatics/queryu",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -344,7 +344,7 @@
         "path": "sakanalytics/vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/SakAnalytics",
+      "source": "myon-bioinformatics/sakanalytics",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -357,7 +357,7 @@
         "path": "vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
+      "source": "myon-bioinformatics/aoi",
       "target": "myon-bioinformatics/markdown"
     },
     {
@@ -370,7 +370,7 @@
         "path": "dragowing/vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/DRAgoWing",
+      "source": "myon-bioinformatics/dragowing",
       "target": "myon-bioinformatics/markdown"
     },
     {
@@ -383,7 +383,7 @@
         "path": "vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
+      "source": "myon-bioinformatics/aoi",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -396,8 +396,8 @@
         "path": "queryu/vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/QueRyu",
-      "target": "myon-bioinformatics/Aoi"
+      "source": "myon-bioinformatics/queryu",
+      "target": "myon-bioinformatics/aoi"
     },
     {
       "kind": "vendor",
@@ -409,8 +409,8 @@
         "path": "dragowing/vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/DRAgoWing",
-      "target": "myon-bioinformatics/Aoi"
+      "source": "myon-bioinformatics/dragowing",
+      "target": "myon-bioinformatics/aoi"
     },
     {
       "kind": "vendor",
@@ -422,7 +422,7 @@
         "path": "vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
+      "source": "myon-bioinformatics/aoi",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -435,7 +435,7 @@
         "path": "vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
+      "source": "myon-bioinformatics/aoi",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -448,7 +448,7 @@
         "path": "vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
+      "source": "myon-bioinformatics/aoi",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -461,7 +461,7 @@
         "path": "vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
+      "source": "myon-bioinformatics/aoi",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -474,7 +474,7 @@
         "path": "dragowing/vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/DRAgoWing",
+      "source": "myon-bioinformatics/dragowing",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -487,7 +487,7 @@
         "path": "vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
+      "source": "myon-bioinformatics/aoi",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -500,7 +500,7 @@
         "path": "vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
+      "source": "myon-bioinformatics/aoi",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -513,7 +513,7 @@
         "path": "vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
+      "source": "myon-bioinformatics/aoi",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -526,7 +526,7 @@
         "path": "vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/Aoi",
+      "source": "myon-bioinformatics/aoi",
       "target": "myon-bioinformatics/myon-bioinformatics"
     },
     {
@@ -539,8 +539,8 @@
         "path": "nagoyaction/vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/NagoyAction",
-      "target": "myon-bioinformatics/Aoi"
+      "source": "myon-bioinformatics/nagoyaction",
+      "target": "myon-bioinformatics/aoi"
     },
     {
       "kind": "vendor",
@@ -552,8 +552,8 @@
         "path": "pythdragoras/vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/PythDRagoras",
-      "target": "myon-bioinformatics/Aoi"
+      "source": "myon-bioinformatics/pythdragoras",
+      "target": "myon-bioinformatics/aoi"
     },
     {
       "kind": "vendor",
@@ -565,8 +565,8 @@
         "path": "sakanalytics/vendor.lock.json",
         "repo": "myon-bioinformatics/Aoi"
       },
-      "source": "myon-bioinformatics/SakAnalytics",
-      "target": "myon-bioinformatics/Aoi"
+      "source": "myon-bioinformatics/sakanalytics",
+      "target": "myon-bioinformatics/aoi"
     },
     {
       "kind": "workflow-pin",
@@ -812,31 +812,15 @@
       "type": "repository"
     },
     {
-      "id": "myon-bioinformatics/Aoi",
+      "id": "myon-bioinformatics/aoi",
       "type": "repository"
     },
     {
-      "id": "myon-bioinformatics/BlueProbe",
+      "id": "myon-bioinformatics/blueprobe",
       "type": "repository"
     },
     {
-      "id": "myon-bioinformatics/DRAgoWing",
-      "type": "repository"
-    },
-    {
-      "id": "myon-bioinformatics/NagoyAction",
-      "type": "repository"
-    },
-    {
-      "id": "myon-bioinformatics/PythDRagoras",
-      "type": "repository"
-    },
-    {
-      "id": "myon-bioinformatics/QueRyu",
-      "type": "repository"
-    },
-    {
-      "id": "myon-bioinformatics/SakAnalytics",
+      "id": "myon-bioinformatics/dragowing",
       "type": "repository"
     },
     {
@@ -848,11 +832,27 @@
       "type": "repository"
     },
     {
+      "id": "myon-bioinformatics/nagoyaction",
+      "type": "repository"
+    },
+    {
       "id": "myon-bioinformatics/ontautology",
       "type": "repository"
     },
     {
       "id": "myon-bioinformatics/onto",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/pythdragoras",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/queryu",
+      "type": "repository"
+    },
+    {
+      "id": "myon-bioinformatics/sakanalytics",
       "type": "repository"
     },
     {

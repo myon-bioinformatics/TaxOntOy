@@ -827,8 +827,8 @@ def _subtree_edges(records):
             "kind": "subtree",
             "path": item["prefix"],
             "provenance": _provenance(item["row"]),
-            "source": item["hub"],
-            "target": item["child"],
+            "source": _endpoint(item["hub"]),
+            "target": _endpoint(item["child"]),
         }
         for item in records
     ]
@@ -873,8 +873,8 @@ def _lock_edges(row, records):
             "origin": source,
             "path": destination,
             "provenance": _provenance(row),
-            "source": holder,
-            "target": repository,
+            "source": _endpoint(holder),
+            "target": _endpoint(repository),
         }
         pin = item.get("commit")
         if pin is not None:
@@ -961,8 +961,8 @@ def _consume_edges(row, records):
                 "kind": "consumes",
                 "origin": directory,
                 "provenance": _provenance(row),
-                "source": child,
-                "target": sibling,
+                "source": _endpoint(child),
+                "target": _endpoint(sibling),
             })
     return edges
 
@@ -994,6 +994,14 @@ def _repo_key(value):
     if not _name_ok(value):
         return None
     return _github_repo(value, exact=True) or value.casefold()
+
+
+def _endpoint(value):
+    """Node id shared by every relation. A name that is not a repository stays as given."""
+    folded = _repo_key(value)
+    if folded is None:
+        return value
+    return folded
 
 
 def _workflow_pins(text):
@@ -1053,7 +1061,7 @@ def _pin_edges(row):
             "path": row["path"],
             "pin": pin,
             "provenance": _provenance(row),
-            "source": _repo_key(row["repo"]) or row["repo"],
+            "source": _endpoint(row["repo"]),
             "target": repo,
         })
     return edges
