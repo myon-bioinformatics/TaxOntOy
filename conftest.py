@@ -9,6 +9,9 @@ import pytest
 
 import onto_path
 
+# Sibling checkouts and generated graphs are not this repo's tests.
+collect_ignore = ["ONTO", "otl", "build"]
+
 
 def activate(anchor=None):
     """ONTO_ROOT を入れ、見つからなければ UsageError にする。"""

@@ -370,6 +370,10 @@ class ArgvTests(unittest.TestCase):
             {"ONTO": "/onto"},
         )
         self.assertEqual(
+            onto_path.explicit_from_argv(["--onto-root=/first", "--onto-root", "/second"]),
+            {"ONTO": "/second"},
+        )
+        self.assertEqual(
             onto_path.explicit_from_argv(["--onto-root", "/first", "--onto-root", "/second"]),
             {"ONTO": "/second"},
         )
@@ -568,6 +572,7 @@ class ConftestTests(unittest.TestCase):
                         module.activate(anchor)
                     self.assertIn("出どころ", str(raised.exception))
                     self.assertIn("ONTO_ROOT", str(raised.exception))
+                    self.assertEqual(module.collect_ignore, ["ONTO", "otl", "build"])
                     with patch.object(onto_path, "bind", side_effect=RuntimeError("boom")):
                         with self.assertRaises(RuntimeError):
                             module.activate(anchor)
@@ -821,6 +826,28 @@ class ResolutionMutationTests(unittest.TestCase):
                     os.environ.pop("ONTO_ROOT", None)
                 else:
                     os.environ["ONTO_ROOT"] = saved_root
+
+    def test_skipping_the_argument_after_equals_is_killed(self):
+        mutant = load_path_mutant(
+            "                index += 1\n"
+            "                handled = True\n",
+            "                index += 2\n"
+            "                handled = True\n",
+        )
+        argv = ["--onto-root=/first", "--onto-root", "/second"]
+        self.assertEqual(onto_path.explicit_from_argv(argv), {"ONTO": "/second"})
+        self.assertEqual(mutant.explicit_from_argv(argv), {"ONTO": "/first"})
+
+    def test_equals_form_marking_itself_unhandled_is_killed(self):
+        mutant = load_path_mutant(
+            "                index += 1\n"
+            "                handled = True\n",
+            "                index += 1\n"
+            "                handled = False\n",
+        )
+        argv = ["--onto-root=/first", "--onto-root", "/second"]
+        self.assertEqual(onto_path.explicit_from_argv(argv), {"ONTO": "/second"})
+        self.assertEqual(mutant.explicit_from_argv(argv), {"ONTO": "/first"})
 
     def test_ignoring_the_equals_form_is_killed(self):
         mutant = load_path_mutant(
