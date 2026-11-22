@@ -1,0 +1,102 @@
+{
+  "schema": "web-ui-page/1",
+  "title": "TaxOntOy 利用ガイド",
+  "theme": "auto",
+  "description": "OnTautoLogy の第一弾（監査）・第二弾（概念）・第三弾（事例）の関係を、分析したい意味に対応づける最小の分類表と、その検査コマンド。",
+  "icon": "./icon.png",
+  "favicon": "./favicon.png",
+  "blocks": [
+    {
+      "type": "badges",
+      "items": [
+        "🗂️ 関係の分類表",
+        "🧰 検査は標準ライブラリのみ",
+        "🐍 Python 3.11+"
+      ]
+    },
+    {
+      "type": "section",
+      "title": "📥 取得",
+      "blocks": [
+        {
+          "type": "text",
+          "text": "Python 3.11+ と git が必要です。以下の例はリポジトリ全体を取得して実行します。"
+        },
+        {
+          "type": "output",
+          "text": "git clone https://github.com/myon-bioinformatics/TaxOntOy.git\ncd TaxOntOy"
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "title": "▶️ 実行",
+      "blocks": [
+        {
+          "type": "card",
+          "title": "✅ 分類表を検査",
+          "text": "形・向き・性質の宣言を確かめます。",
+          "blocks": [
+            {
+              "type": "output",
+              "text": "$ python -S taxontoy.py validate otl-relations.json"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "🧮 グラフとの対応を数える",
+          "text": "3つの弾のグラフ JSON を渡します。",
+          "blocks": [
+            {
+              "type": "output",
+              "text": "$ python -S taxontoy.py coverage otl-relations.json \\\n    --graph audit=build/audit.json \\\n    --graph concepts=build/concepts.json \\\n    --graph cases=build/cases.json \\\n    --onto ../ONTO \\\n    --format json"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "❓ ヘルプ",
+          "text": "サブコマンドの一覧です。",
+          "blocks": [
+            {
+              "type": "output",
+              "text": "$ python -S taxontoy.py --help"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "title": "🔗 リンク",
+      "blocks": [
+        {
+          "type": "links",
+          "items": [
+            {
+              "label": "📦 リポジトリ",
+              "href": "https://github.com/myon-bioinformatics/TaxOntOy"
+            },
+            {
+              "label": "📖 README",
+              "href": "https://github.com/myon-bioinformatics/TaxOntOy#readme"
+            },
+            {
+              "label": "🗂️ otl-relations.json",
+              "href": "https://github.com/myon-bioinformatics/TaxOntOy/blob/main/otl-relations.json"
+            },
+            {
+              "label": "🕸️ OnTautoLogy",
+              "href": "https://github.com/myon-bioinformatics/OnTautoLogy"
+            },
+            {
+              "label": "🧭 TopOntoLogy",
+              "href": "https://github.com/myon-bioinformatics/TopOntoLogy"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
