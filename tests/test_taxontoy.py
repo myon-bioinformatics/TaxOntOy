@@ -52,7 +52,7 @@ raise SystemExit(status)
 """
 
 
-def run(args, *, cwd=None, env=None):
+def run(args, *, cwd=None, env=None, input_text=None):
     dest = _COVER_DIR / f"{len(list(_COVER_DIR.iterdir()))}.txt"
     return subprocess.run(
         [
@@ -60,6 +60,7 @@ def run(args, *, cwd=None, env=None):
             str(ROOT / "taxontoy.py"), str(dest), str(ROOT / "tests" / "branchcov.py"), *args,
         ],
         cwd=ROOT if cwd is None else cwd,
+        input=input_text,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -129,6 +130,22 @@ def fixture_graphs():
 
 
 class CheckedInTableTests(unittest.TestCase):
+    def test_piped_table_preserves_validation_and_hash(self):
+        text = json.dumps(minimal_table(), ensure_ascii=False) + " "
+        run_stdin = run(["validate", "-", "--json"], input_text=text)
+        self.assertEqual(run_stdin.returncode, 0, run_stdin.stderr)
+        report = json.loads(run_stdin.stdout)
+        self.assertEqual(report["inputs"], [{"path": "-", "sha256": hashlib.sha256(text.encode()).hexdigest()}])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "table.json"
+            path.write_bytes(text.encode())
+            from_file = json.loads(run(["validate", str(path), "--json"]).stdout)
+        self.assertEqual(from_file.pop("inputs")[0]["sha256"], report.pop("inputs")[0]["sha256"])
+        self.assertEqual(from_file, report)
+        malformed = run(["validate", "-", "--json"], input_text='{"x":1,"x":2}')
+        self.assertNotEqual(malformed.returncode, 0)
+        self.assertIn("duplicate key", malformed.stderr)
+
     def test_table_valid_and_tol_can_read_class_strings(self):
         data = json.loads(TABLE.read_text(encoding="utf-8"))
         self.assertEqual(taxontoy.validate_document(data), [])
