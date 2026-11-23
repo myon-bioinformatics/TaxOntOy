@@ -1947,8 +1947,8 @@ class MutationTests(unittest.TestCase):
                 "if False:\n        return None",
             ),
             (
-                'rank.add_argument("--profile", required=True, choices=WAVES)',
-                'rank.add_argument("--profile", required=False, choices=WAVES)',
+                'rank.add_argument("--profile", required=True, choices=WAVES,help="profile to rank for")',
+                'rank.add_argument("--profile", required=False, choices=WAVES,help="profile to rank for")',
             ),
             (
                 '"edges": len(items),',
