@@ -1,5 +1,7 @@
 # TaxOntOy
 
+🌐 [GitHub Pages](https://myon-bioinformatics.github.io/TaxOntOy/) · 🏠 [Portfolio](https://myon-bioinformatics.github.io/)
+
 <img src="docs/assets/taxontoy-icon.png" width="160" height="160" alt="TaxOntOy アイコン">
 
 [otl-relations.json](otl-relations.json) は OnTautoLogy の第一弾（監査）、第二弾（概念）、第三弾（事例）の関係を、分析したい意味に対応づける最小の分類表です。キーは OTL のグラフ JSON に現れる関係名です。元の辺の向きと ID を保持します。
