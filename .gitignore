@@ -4,3 +4,9 @@ __pycache__/
 /onto
 /ONTO
 /otl
+*.py[cod]
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.DS_Store
