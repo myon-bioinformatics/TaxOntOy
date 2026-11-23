@@ -2034,21 +2034,21 @@ def _add_format(parser, default):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="taxontoy", description=__doc__)
-    parser.add_argument("--version", action="version", version=f"taxontoy {__version__}")
+    parser.add_argument("--version", action="version", version=f"taxontoy {__version__}",help="show the version and exit")
     commands = parser.add_subparsers(dest="command", required=True)
 
     structure = commands.add_parser("structure", help="classify an SSIS coordinate graph and check containment")
-    structure.add_argument("graph", type=Path)
-    structure.add_argument("--onto-root", type=Path)
-    structure.add_argument("--output", type=Path)
+    structure.add_argument("graph", type=Path,help="structure-graph/1 JSON")
+    structure.add_argument("--onto-root", type=Path,help="ONTO checkout (default: ONTO_ROOT, then a sibling or ancestor checkout)")
+    structure.add_argument("--output", type=Path,help="write the report here instead of stdout")
 
     validate = commands.add_parser("validate", help="check the classification table")
-    validate.add_argument("table", nargs="?", type=Path)
+    validate.add_argument("table", nargs="?", type=Path,help="classification table (default: the bundled otl-relations.json)")
     _add_format(validate, "text")
 
     cover = commands.add_parser("coverage", help="partition relation names in OTL graphs")
-    cover.add_argument("table", nargs="?", type=Path)
-    cover.add_argument("--graph", action="append", default=[], metavar="WAVE=PATH")
+    cover.add_argument("table", nargs="?", type=Path,help="classification table (default: the bundled otl-relations.json)")
+    cover.add_argument("--graph", action="append", default=[], metavar="WAVE=PATH",help="OTL graph for one profile, audit|concepts|cases=PATH (repeatable)")
     cover.add_argument(
         "--onto-root", type=Path,
         help="ONTO checkout (default: ONTO_ROOT, then a sibling or ancestor checkout)",
@@ -2057,27 +2057,27 @@ def main(argv=None):
     _add_format(cover, "json")
 
     candidates = commands.add_parser("candidates", help="report alias and property candidates without folding")
-    candidates.add_argument("table", nargs="?", type=Path)
-    candidates.add_argument("--graph", action="append", default=[], metavar="WAVE=PATH")
+    candidates.add_argument("table", nargs="?", type=Path,help="classification table (default: the bundled otl-relations.json)")
+    candidates.add_argument("--graph", action="append", default=[], metavar="WAVE=PATH",help="OTL graph for one profile, audit|concepts|cases=PATH (repeatable)")
     _add_format(candidates, "json")
 
     rank = commands.add_parser(
         "rank-unclassified",
         help="rank relation names that are not classified for one profile",
     )
-    rank.add_argument("graph", type=Path)
-    rank.add_argument("table", nargs="?", type=Path)
-    rank.add_argument("--profile", required=True, choices=WAVES)
+    rank.add_argument("graph", type=Path,help="OTL graph JSON with an edges array")
+    rank.add_argument("table", nargs="?", type=Path,help="classification table (default: the bundled otl-relations.json)")
+    rank.add_argument("--profile", required=True, choices=WAVES,help="profile to rank for")
     _add_format(rank, "json")
 
     graph_cmd = commands.add_parser("graph", help="build an OTL graph of repository relations from explicit paths")
-    graph_cmd.add_argument("--manifest", type=Path)
+    graph_cmd.add_argument("--manifest", type=Path,help="repository manifest (default: the bundled fixtures/repos/manifest.json)")
     _add_format(graph_cmd, "json")
 
     props = commands.add_parser("properties", help="report declared property violations with the offending edges")
-    props.add_argument("table", nargs="?", type=Path)
-    props.add_argument("--graph", type=Path)
-    props.add_argument("--manifest", type=Path)
+    props.add_argument("table", nargs="?", type=Path,help="classification table (default: the bundled otl-relations.json)")
+    props.add_argument("--graph", type=Path,help="repository graph JSON (default: built from --manifest)")
+    props.add_argument("--manifest", type=Path,help="repository manifest (default: the bundled fixtures/repos/manifest.json)")
     props.add_argument("--strict", action="store_true", help="exit 2 when a declared property is violated")
     _add_format(props, "json")
 
@@ -2085,9 +2085,9 @@ def main(argv=None):
         "reconcile",
         help="diff repos workflow-pin edges against a gh_identity pin-audit file",
     )
-    reconcile.add_argument("table", nargs="?", type=Path)
-    reconcile.add_argument("--graph", type=Path)
-    reconcile.add_argument("--manifest", type=Path)
+    reconcile.add_argument("table", nargs="?", type=Path,help="classification table (default: the bundled otl-relations.json)")
+    reconcile.add_argument("--graph", type=Path,help="repository graph JSON (default: built from --manifest)")
+    reconcile.add_argument("--manifest", type=Path,help="repository manifest (default: the bundled fixtures/repos/manifest.json)")
     reconcile.add_argument("--pin-audit", type=Path, help="gh-identity-pin-audit/1 JSON; TOO does not call GitHub")
     reconcile.add_argument("--repo", help="workflow repository the pin-audit file describes")
     reconcile.add_argument("--strict", action="store_true", help="exit 2 when the pin sets differ")
