@@ -8,7 +8,7 @@
 
 <img src="docs/assets/favicon.png" alt="" width="32" height="32"> [ファビコン（32 × 32）](docs/assets/favicon.png)
 
-[![OnTautoLogy のグラフの関係名を TaxOntOy の分類表で意味クラスに対応づけ、TopOntoLogy で分類ごとの構造を調べる流れ](docs/assets/taxontoy-overview.jpg)](docs/assets/taxontoy-overview.jpg)
+[![OnTautoLogy のグラフの関係名を TaxOntOy の分類表で意味クラスに対応づけ、TopOntoLogy で分類ごとの構造を調べる流れ](docs/assets/repository-concept.jpg)](docs/assets/repository-concept.jpg)
 
 図の右列は構造分析を担当する TopOntoLogy（TOL）です。
 
