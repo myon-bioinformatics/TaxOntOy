@@ -1,7 +1,7 @@
 {
   "schema": "web-ui-page/1",
   "title": "TaxOntOy 利用ガイド",
-  "theme": "auto",
+  "theme": "modern",
   "description": "OnTautoLogy の第一弾（監査）・第二弾（概念）・第三弾（事例）の関係を、分析したい意味に対応づける最小の分類表と、その検査コマンド。",
   "icon": "./icon.png",
   "favicon": "./favicon.png",
