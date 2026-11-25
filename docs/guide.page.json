@@ -77,6 +77,71 @@
           ]
         },
         {
+          "label": "🔬 検証ガイド",
+          "blocks": [
+            {
+              "type": "runbook",
+              "id": "verify",
+              "books": [
+                {
+                  "label": "🐍 python",
+                  "intro": "🤖 のついた手順は CI で実際に動かし、出た結果をそのまま載せています。",
+                  "runbook": {
+                    "key": "taxontoy/python",
+                    "steps": [
+                      {
+                        "id": "get",
+                        "title": "📥 ファイルを置く",
+                        "command": "curl -fsSLO https://raw.githubusercontent.com/myon-bioinformatics/TaxOntOy/main/taxontoy.py",
+                        "needs": "🌐 ネットワーク"
+                      },
+                      {
+                        "id": "help",
+                        "title": "❓ ヘルプ",
+                        "command": "python -S taxontoy.py --help",
+                        "run": true
+                      },
+                      {
+                        "id": "validate",
+                        "title": "✅ 分類表を検査",
+                        "command": "python -S taxontoy.py validate otl-relations.json",
+                        "run": true
+                      },
+                      {
+                        "id": "coverage",
+                        "title": "🧮 グラフとの対応を数える",
+                        "command": "python -S taxontoy.py coverage otl-relations.json --graph audit=build/audit.json --onto ../ONTO --format json",
+                        "needs": "🧭 ONTO の checkout と build/*.json"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "label": "⚡ uv",
+                  "intro": "uv があれば Python の版を気にせず動きます。",
+                  "runbook": {
+                    "key": "taxontoy/uv",
+                    "steps": [
+                      {
+                        "id": "get",
+                        "title": "📥 ファイルを置く",
+                        "command": "curl -fsSLO https://raw.githubusercontent.com/myon-bioinformatics/TaxOntOy/main/taxontoy.py",
+                        "needs": "🌐 ネットワーク"
+                      },
+                      {
+                        "id": "help",
+                        "title": "❓ ヘルプ",
+                        "command": "uv run --no-project python -S taxontoy.py --help",
+                        "run": true
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
           "label": "🎞 GIF デモ",
           "blocks": [
             {
