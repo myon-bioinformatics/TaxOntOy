@@ -1,5 +1,8 @@
 name: CI
 on:
+  schedule:
+    - cron: "53 20 * * *"  # 🔁 follow-main
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -25,14 +28,14 @@ jobs:
         with:
           repository: myon-bioinformatics/ONTO
           # First-parent merge of pull request #15 on main.
-          ref: 89e23ddadb47f04bb10318a2232f2be554c6651f
+          ref: main
           path: ONTO
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/OnTautoLogy
           # First-parent merge of pull request #47 on main.
-          ref: 79cb14722e4bfb1343718cc492a256e090cbc110
+          ref: main
           path: otl
           persist-credentials: false
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
@@ -123,3 +126,16 @@ jobs:
             --output "$RUNNER_TEMP/inferred-coverage.json"
           diff -u coverage.json "$RUNNER_TEMP/inferred-coverage.json"
           uv run --no-project python -S -m unittest discover -s tests -q
+
+  # 🔁 own sources follow main: on schedule / manual run, take main of own repositories and push to main
+  follow-main:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-follow-main.yml@main
+    permissions:
+      contents: write
+    with:
+      node-version: "26"
+      check: |
+        git clone -q --depth 1 https://github.com/myon-bioinformatics/ONTO ONTO
+        git clone -q --depth 1 https://github.com/myon-bioinformatics/OnTautoLogy otl
+        ONTO_ROOT="$PWD/ONTO" uv run --no-project python -S -m unittest discover -s tests -q
